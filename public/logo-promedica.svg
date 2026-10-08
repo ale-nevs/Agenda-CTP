@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 56" role="img" aria-label="Promédica">
+  <g transform="translate(4 6)">
+    <rect x="0" y="0" width="44" height="44" rx="12" fill="#154788"/>
+    <path d="M17 9h10v8h8v10h-8v8H17v-8H9V17h8z" fill="#ffffff"/>
+    <circle cx="36" cy="36" r="5" fill="#00a19a"/>
+  </g>
+  <text x="58" y="36" font-family="Montserrat, Arial, Helvetica, sans-serif" font-size="27" font-weight="800" letter-spacing="-0.5" fill="#154788">pro<tspan fill="#00a19a">médica</tspan></text>
+</svg>

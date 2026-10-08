@@ -13,11 +13,92 @@ import {
   EyeOff,
   UserCheck,
   AlertTriangle,
-  Zap
+  Zap,
+  Clock,
+  BarChart3,
+  CalendarRange
 } from 'lucide-react';
 import { ParsedReport, DayOfWeekKey, DAYS_OF_WEEK } from '../types';
-import { normalizePatientName, normalizeTherapistName } from '../utils/conflictUtils';
+import { getIntervalSlot, normalizePatientName, normalizeTherapistName } from '../utils/conflictUtils';
+import { APP_FULL_NAME, BRAND, FONT_FAMILY, GOOGLE_FONTS_HREF, LOGO_PATH } from '../brand';
 import * as XLSX from 'xlsx';
+
+/** Duração considerada para cada sessão (grade padrão de 30 minutos). */
+const SESSION_MINUTES = 30;
+
+interface ProfessionalSummary {
+  name: string;
+  sessions: number;
+  minutes: number;
+  days: DayOfWeekKey[];
+}
+
+interface TherapySummary {
+  specialty: string;
+  sessions: number;
+  minutes: number;
+  professionals: ProfessionalSummary[];
+}
+
+export function formatMinutes(total: number): string {
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h === 0) return `${m}min`;
+  return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, '0')}`;
+}
+
+/**
+ * Quantidade de horas por terapia (especialidade) e profissionais de cada uma,
+ * para o paciente no dia selecionado ou na semana inteira.
+ * Cada horário da grade (intervalo de 30 min) com a mesma profissional conta como uma sessão.
+ */
+function computeTherapySummary(
+  weeklyReports: Record<DayOfWeekKey, ParsedReport | null>,
+  patientName: string,
+  scope: DayOfWeekKey | 'SEMANA'
+): TherapySummary[] {
+  if (!patientName) return [];
+  const norm = normalizePatientName(patientName);
+  const days = scope === 'SEMANA' ? DAYS_OF_WEEK.map((d) => d.key) : [scope];
+
+  const bySpecialty = new Map<string, Map<string, { name: string; slots: Set<string>; days: Set<DayOfWeekKey> }>>();
+
+  days.forEach((day) => {
+    const report = weeklyReports[day];
+    if (!report) return;
+    report.therapists.forEach((t) => {
+      t.appointments.forEach((a) => {
+        if (normalizePatientName(a.patientName) !== norm) return;
+        const specialty = (a.specialty || t.specialty || 'ESPECIALIDADE').toUpperCase();
+        const profKey = normalizeTherapistName(t.name) || t.id;
+        if (!bySpecialty.has(specialty)) bySpecialty.set(specialty, new Map());
+        const profs = bySpecialty.get(specialty)!;
+        if (!profs.has(profKey)) profs.set(profKey, { name: t.name, slots: new Set(), days: new Set() });
+        const prof = profs.get(profKey)!;
+        prof.slots.add(`${day}|${getIntervalSlot(a.time)}`);
+        prof.days.add(day);
+      });
+    });
+  });
+
+  const dayOrder = DAYS_OF_WEEK.map((d) => d.key);
+  return Array.from(bySpecialty.entries())
+    .map(([specialty, profs]) => {
+      const professionals = Array.from(profs.values())
+        .map((p) => ({
+          name: p.name,
+          sessions: p.slots.size,
+          minutes: p.slots.size * SESSION_MINUTES,
+          days: Array.from(p.days).sort((x, y) => dayOrder.indexOf(x) - dayOrder.indexOf(y)),
+        }))
+        .sort((x, y) => y.sessions - x.sessions || x.name.localeCompare(y.name));
+      const sessions = professionals.reduce((sum, p) => sum + p.sessions, 0);
+      return { specialty, sessions, minutes: sessions * SESSION_MINUTES, professionals };
+    })
+    .sort((x, y) => y.sessions - x.sessions || x.specialty.localeCompare(y.specialty));
+}
+
+const dayShortLabel = (key: DayOfWeekKey) => DAYS_OF_WEEK.find((d) => d.key === key)?.label || key;
 
 interface PatientScheduleModalProps {
   isOpen: boolean;
@@ -40,6 +121,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
   const [selectedPatient, setSelectedPatient] = useState<string>(initialPatientName);
   const [copied, setCopied] = useState(false);
   const [hideNotFound, setHideNotFound] = useState(false);
+  const [viewMode, setViewMode] = useState<'grade' | 'resumo'>('grade');
 
   // Extract all unique patients across all uploaded days
   const allPatientsWithStats = useMemo(() => {
@@ -346,13 +428,87 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
     }
   }, [selectedPatient, selectedDay, currentSchedule, weeklyReports]);
 
+  // Quantidade de horas por terapia e profissionais (dia selecionado ou semana)
+  const therapySummary = useMemo(
+    () => computeTherapySummary(weeklyReports, selectedPatient, selectedDay),
+    [weeklyReports, selectedPatient, selectedDay]
+  );
+  const summaryTotals = useMemo(() => {
+    const sessions = therapySummary.reduce((sum, t) => sum + t.sessions, 0);
+    const professionals = new Set(therapySummary.flatMap((t) => t.professionals.map((p) => normalizeTherapistName(p.name))));
+    return { sessions, minutes: sessions * SESSION_MINUTES, specialties: therapySummary.length, professionals: professionals.size };
+  }, [therapySummary]);
+  const scopeLabel =
+    selectedDay === 'SEMANA'
+      ? 'Semana inteira (segunda a sábado)'
+      : DAYS_OF_WEEK.find((d) => d.key === selectedDay)?.fullLabel || selectedDay;
+
+  const summaryText = () => {
+    let text = `PACIENTE: ${selectedPatient}\tQUANTIDADE / PROFISSIONAIS (${scopeLabel})\n`;
+    text += `ESPECIALIDADE\tSESSÕES\tCARGA HORÁRIA\tPROFISSIONAIS\n`;
+    therapySummary.forEach((t) => {
+      const profs = t.professionals
+        .map((p) => `${p.name} (${p.sessions} sessões · ${formatMinutes(p.minutes)} · ${p.days.map(dayShortLabel).join(', ')})`)
+        .join('; ');
+      text += `${t.specialty}\t${t.sessions}\t${formatMinutes(t.minutes)}\t${profs}\n`;
+    });
+    text += `TOTAL\t${summaryTotals.sessions}\t${formatMinutes(summaryTotals.minutes)}\t${summaryTotals.professionals} profissional(is)\n`;
+    return text;
+  };
+
+  const summaryPrintHtml = () => {
+    if (therapySummary.length === 0) {
+      return `<h3 class="section">QUANTIDADE / PROFISSIONAIS (${scopeLabel.toUpperCase()})</h3><p class="muted">Nenhum atendimento encontrado.</p>`;
+    }
+    return `
+      <h3 class="section">QUANTIDADE / PROFISSIONAIS · ${scopeLabel.toUpperCase()}</h3>
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 170px;">ESPECIALIDADE</th>
+            <th style="width: 70px; text-align: center;">SESSÕES</th>
+            <th style="width: 90px; text-align: center;">CARGA HORÁRIA</th>
+            <th>PROFISSIONAIS</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${therapySummary
+            .map(
+              (t) => `
+            <tr>
+              <td style="font-weight: bold;">${t.specialty}</td>
+              <td style="text-align: center; font-weight: bold;">${t.sessions}</td>
+              <td style="text-align: center; font-weight: bold;">${formatMinutes(t.minutes)}</td>
+              <td>${t.professionals
+                .map(
+                  (p) =>
+                    `<div><strong>${p.name}</strong> — ${p.sessions} sessão(ões) · ${formatMinutes(p.minutes)} · ${p.days
+                      .map(dayShortLabel)
+                      .join(', ')}</div>`
+                )
+                .join('')}</td>
+            </tr>`
+            )
+            .join('')}
+          <tr class="total">
+            <td>TOTAL</td>
+            <td style="text-align: center;">${summaryTotals.sessions}</td>
+            <td style="text-align: center;">${formatMinutes(summaryTotals.minutes)}</td>
+            <td>${summaryTotals.specialties} especialidade(s) · ${summaryTotals.professionals} profissional(is)</td>
+          </tr>
+        </tbody>
+      </table>`;
+  };
+
   // Copy table to clipboard in text format requested by user
   const handleCopyTable = async () => {
     if (!selectedPatient) return;
 
     let textToCopy = '';
 
-    if (selectedDay !== 'SEMANA') {
+    if (viewMode === 'resumo') {
+      textToCopy = summaryText();
+    } else if (selectedDay !== 'SEMANA') {
       const dayLabel = selectedDay;
       textToCopy += `\tPACIENTE: ${selectedPatient}\t\t\n`;
       if (activeConflicts.length > 0) {
@@ -448,6 +604,23 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
       });
     }
 
+    // Aba com quantidade de horas por terapia e profissionais
+    const summaryRows: (string | number)[][] = [
+      [`PACIENTE: ${selectedPatient}`, '', '', '', ''],
+      [`QUANTIDADE / PROFISSIONAIS · ${scopeLabel.toUpperCase()}`, '', '', '', ''],
+      ['ESPECIALIDADE', 'PROFISSIONAL', 'SESSÕES', 'CARGA HORÁRIA', 'DIAS'],
+    ];
+    therapySummary.forEach((t) => {
+      summaryRows.push([t.specialty, `${t.professionals.length} profissional(is)`, t.sessions, formatMinutes(t.minutes), '']);
+      t.professionals.forEach((p) => {
+        summaryRows.push(['', p.name, p.sessions, formatMinutes(p.minutes), p.days.map(dayShortLabel).join(', ')]);
+      });
+    });
+    summaryRows.push(['TOTAL', `${summaryTotals.professionals} profissional(is)`, summaryTotals.sessions, formatMinutes(summaryTotals.minutes), '']);
+    const summaryWs = XLSX.utils.aoa_to_sheet(summaryRows);
+    summaryWs['!cols'] = [{ wch: 28 }, { wch: 40 }, { wch: 10 }, { wch: 15 }, { wch: 30 }];
+    XLSX.utils.book_append_sheet(wb, summaryWs, 'Quantidade-Profissionais');
+
     const cleanName = selectedPatient.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
     XLSX.writeFile(wb, `Grade_${cleanName}_${selectedDay}.xlsx`);
   };
@@ -485,7 +658,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
 
       bodyHtml = `
         <div class="header">
-          <h1>CLÍNICA PROMÉDICA &bull; GRADE DO PACIENTE</h1>
+<div class="brandbar"><img src="${new URL(LOGO_PATH, window.location.href).href}" alt="Promédica" /><div><div class="app">${APP_FULL_NAME}</div><h1>GRADE DO PACIENTE</h1></div></div>
           <p><strong>PACIENTE:</strong> ${selectedPatient}</p>
           <p><strong>DIA:</strong> ${selectedDay} &bull; <strong>TOTAL DE ATENDIMENTOS:</strong> ${count}</p>
           <div class="legend">
@@ -555,7 +728,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
       // Full week printing
       bodyHtml = `
         <div class="header">
-          <h1>CLÍNICA PROMÉDICA &bull; GRADE SEMANAL DO PACIENTE</h1>
+<div class="brandbar"><img src="${new URL(LOGO_PATH, window.location.href).href}" alt="Promédica" /><div><div class="app">${APP_FULL_NAME}</div><h1>GRADE SEMANAL DO PACIENTE</h1></div></div>
           <p><strong>PACIENTE:</strong> ${selectedPatient}</p>
           <div class="legend">
             <strong>LEGENDA:</strong> 
@@ -574,7 +747,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
         if (activeRows.length === 0) return;
 
         bodyHtml += `
-          <h3 style="margin-top: 16px; margin-bottom: 6px; color: #1b5e20;">${d.fullLabel.toUpperCase()} (${activeRows.length} Atendimentos)</h3>
+          <h3 style="margin-top: 16px; margin-bottom: 6px; color: ${BRAND.primary};">${d.fullLabel.toUpperCase()} (${activeRows.length} Atendimentos)</h3>
           <table>
             <thead>
               <tr>
@@ -627,22 +800,42 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
       });
     }
 
+    if (viewMode === 'resumo') {
+      bodyHtml = `
+        <div class="header">
+          <div class="brandbar"><img src="${new URL(LOGO_PATH, window.location.href).href}" alt="Promédica" /><div><div class="app">${APP_FULL_NAME}</div><h1>QUANTIDADE / PROFISSIONAIS</h1></div></div>
+          <p><strong>PACIENTE:</strong> ${selectedPatient}</p>
+          <p><strong>PERÍODO:</strong> ${scopeLabel} &bull; <strong>SESSÕES DE ${SESSION_MINUTES} MIN</strong></p>
+        </div>
+        ${summaryPrintHtml()}
+      `;
+    } else {
+      bodyHtml += summaryPrintHtml();
+    }
+
     printWin.document.write(`<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
   <title>${title}</title>
+  <link rel="stylesheet" href="${GOOGLE_FONTS_HREF}" />
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: Arial, sans-serif; }
-    body { padding: 12mm 15mm; color: #111; font-size: 11px; }
-    .header { border-bottom: 2px solid #1b5e20; padding-bottom: 8px; margin-bottom: 12px; }
-    .header h1 { font-size: 15px; color: #1b5e20; margin-bottom: 4px; }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: ${FONT_FAMILY}; }
+    body { padding: 12mm 15mm; color: #111; font-size: 11px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .header { border-bottom: 2px solid ${BRAND.primary}; padding-bottom: 8px; margin-bottom: 12px; }
+    .brandbar { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+    .brandbar img { height: 34px; width: auto; }
+    .brandbar .app { font-size: 10px; font-weight: 700; color: ${BRAND.accent}; text-transform: uppercase; letter-spacing: .5px; }
+    .header h1 { font-size: 15px; color: ${BRAND.primary}; margin-bottom: 2px; }
+    .section { margin: 16px 0 6px; color: ${BRAND.primary}; font-size: 12px; }
+    .muted { color: #6b7280; font-style: italic; }
+    tr.total td { background-color: ${BRAND.primaryLight}; font-weight: bold; }
     .header p { font-size: 11.5px; margin-bottom: 2px; }
     .legend { margin-top: 5px; font-size: 10px; color: #444; }
     table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
     th, td { border: 1px solid #333; padding: 4px 6px; font-size: 10px; text-align: left; }
-    th { background-color: #1b5e20; color: #fff; font-weight: bold; }
-    .row-found { background-color: #f0fdf4; }
+    th { background-color: ${BRAND.primary}; color: #fff; font-weight: bold; }
+    .row-found { background-color: ${BRAND.primarySoft}; }
     .row-choque { background-color: #fee2e2; color: #7f1d1d; font-weight: bold; }
     .row-dupla { background-color: #fef3c7; }
     .row-grupo { background-color: #f3e8ff; }
@@ -676,21 +869,21 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-6 backdrop-blur-xs">
       <div className="flex max-h-[92vh] w-full max-w-5xl flex-col rounded-xl bg-white shadow-2xl overflow-hidden border border-gray-200">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 bg-emerald-900 px-6 py-3.5 text-white">
+        <div className="flex items-center justify-between border-b border-gray-200 bg-brand-900 px-6 py-3.5 text-white">
           <div className="flex items-center gap-2.5">
-            <div className="rounded-lg bg-emerald-800 p-2 text-white">
+            <div className="rounded-lg bg-brand-800 p-2 text-white">
               <UserCheck className="h-5 w-5" />
             </div>
             <div>
               <h2 className="text-base font-bold tracking-tight">Grade Completa do Paciente</h2>
-              <p className="text-xs text-emerald-200">
+              <p className="text-xs text-brand-200">
                 Consulta de horários, especialidades e profissionais por dia da semana
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-emerald-200 hover:bg-emerald-800 hover:text-white transition-colors"
+            className="rounded-lg p-1.5 text-brand-200 hover:bg-brand-800 hover:text-white transition-colors"
             title="Fechar (Esc)"
           >
             <X className="h-5 w-5" />
@@ -698,7 +891,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
         </div>
 
         {/* Search Bar and Autocomplete */}
-        <div className="border-b border-gray-200 bg-emerald-50/50 p-4">
+        <div className="border-b border-gray-200 bg-brand-50/50 p-4">
           <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
             <div className="relative w-full sm:max-w-md">
               <div className="relative">
@@ -710,7 +903,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                     setPatientQuery(e.target.value);
                   }}
                   placeholder="Digite o nome do paciente (ex: JOAQUIM PAULO MOREIRA)..."
-                  className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-8 text-xs font-semibold text-gray-900 shadow-xs focus:border-emerald-600 focus:outline-hidden focus:ring-1 focus:ring-emerald-600"
+                  className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-8 text-xs font-semibold text-gray-900 shadow-xs focus:border-brand-600 focus:outline-hidden focus:ring-1 focus:ring-brand-600"
                 />
                 {patientQuery && (
                   <button
@@ -737,10 +930,10 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                         setSelectedPatient(p.name);
                         setPatientQuery(p.name);
                       }}
-                      className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium text-gray-800 hover:bg-emerald-50 hover:text-emerald-900 transition-colors"
+                      className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium text-gray-800 hover:bg-brand-50 hover:text-brand-900 transition-colors"
                     >
                       <span className="font-semibold">{p.name}</span>
-                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                      <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-bold text-brand-800">
                         {p.total} sessões ({p.days.join(', ')})
                       </span>
                     </button>
@@ -753,7 +946,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
             {selectedPatient && (
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <span className="font-semibold text-gray-600">Total na semana:</span>
-                <span className="rounded-full bg-emerald-700 px-2.5 py-0.5 font-bold text-white shadow-xs">
+                <span className="rounded-full bg-brand-700 px-2.5 py-0.5 font-bold text-white shadow-xs">
                   {Object.values(patientAppointmentsCountByDay).reduce((a, b) => a + b, 0)} atendimentos
                 </span>
                 <span className="text-gray-400">|</span>
@@ -761,7 +954,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                   onClick={() => setHideNotFound((prev) => !prev)}
                   className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold border transition-colors ${
                     hideNotFound
-                      ? 'border-emerald-600 bg-emerald-100 text-emerald-900'
+                      ? 'border-brand-600 bg-brand-100 text-brand-900'
                       : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
                   }`}
                   title="Alternar entre ver todos os horários ou apenas horários agendados"
@@ -774,7 +967,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
           </div>
 
           {/* Days of Week Tab Bar */}
-          <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-emerald-100/60 pt-3">
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-brand-100/60 pt-3">
             <span className="text-[11px] font-bold text-gray-500 uppercase mr-1">Dia da Semana:</span>
             {DAYS_OF_WEEK.map((day) => {
               const count = patientAppointmentsCountByDay[day.key];
@@ -787,17 +980,17 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                   onClick={() => setSelectedDay(day.key)}
                   className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-bold transition-all ${
                     isSelected
-                      ? 'bg-emerald-800 text-white shadow-xs'
-                      : 'bg-white text-gray-700 border border-gray-200 hover:border-emerald-400 hover:bg-emerald-50/50'
+                      ? 'bg-brand-800 text-white shadow-xs'
+                      : 'bg-white text-gray-700 border border-gray-200 hover:border-brand-400 hover:bg-brand-50/50'
                   }`}
                 >
                   <span>{day.label}</span>
                   <span
                     className={`rounded-full px-1.5 py-0.2 text-[10px] font-extrabold ${
                       isSelected
-                        ? 'bg-emerald-950 text-emerald-200'
+                        ? 'bg-brand-950 text-brand-200'
                         : count > 0
-                        ? 'bg-emerald-100 text-emerald-800'
+                        ? 'bg-brand-100 text-brand-800'
                         : 'bg-gray-100 text-gray-400'
                     }`}
                   >
@@ -814,13 +1007,39 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
               onClick={() => setSelectedDay('SEMANA')}
               className={`inline-flex items-center gap-1 rounded-lg px-3 py-1 text-xs font-bold transition-all ml-auto ${
                 selectedDay === 'SEMANA'
-                  ? 'bg-emerald-800 text-white shadow-xs'
-                  : 'bg-white text-gray-700 border border-gray-200 hover:bg-emerald-50/50'
+                  ? 'bg-brand-800 text-white shadow-xs'
+                  : 'bg-white text-gray-700 border border-gray-200 hover:bg-brand-50/50'
               }`}
             >
               <Calendar className="h-3.5 w-3.5" />
               <span>Toda a Semana</span>
             </button>
+          </div>
+
+          {/* Modo de visualização */}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-bold uppercase text-gray-500 mr-1">Visualizar:</span>
+            <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 shadow-2xs">
+              <button
+                onClick={() => setViewMode('grade')}
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
+                  viewMode === 'grade' ? 'bg-brand-700 text-white' : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <CalendarRange className="h-3.5 w-3.5" />
+                Grade de horários
+              </button>
+              <button
+                onClick={() => setViewMode('resumo')}
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
+                  viewMode === 'resumo' ? 'bg-brand-700 text-white' : 'text-gray-600 hover:bg-gray-50'
+                }`}
+                title="Quantas horas de cada terapia e quais profissionais atendem cada especialidade"
+              >
+                <BarChart3 className="h-3.5 w-3.5" />
+                Quantidade / Profissionais
+              </button>
+            </div>
           </div>
         </div>
 
@@ -833,6 +1052,98 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
               <p className="text-xs text-gray-500 mt-1">
                 Digite o nome do paciente no campo acima para visualizar sua grade completa.
               </p>
+            </div>
+          ) : viewMode === 'resumo' ? (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-brand-200 bg-white p-4 shadow-xs">
+                <div className="flex flex-col gap-1 border-b border-brand-100 pb-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-brand-700">Quantidade / Profissionais</div>
+                    <div className="text-lg font-extrabold tracking-tight text-gray-900">PACIENTE: {selectedPatient}</div>
+                  </div>
+                  <span className="self-start rounded-md border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-bold text-brand-800 sm:self-auto">
+                    {scopeLabel}
+                  </span>
+                </div>
+
+                {/* Totais */}
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {[
+                    { label: 'Carga horária', value: formatMinutes(summaryTotals.minutes), icon: <Clock className="h-4 w-4" /> },
+                    { label: 'Sessões (30 min)', value: String(summaryTotals.sessions), icon: <CalendarRange className="h-4 w-4" /> },
+                    { label: 'Terapias', value: String(summaryTotals.specialties), icon: <BarChart3 className="h-4 w-4" /> },
+                    { label: 'Profissionais', value: String(summaryTotals.professionals), icon: <Users className="h-4 w-4" /> },
+                  ].map((kpi) => (
+                    <div key={kpi.label} className="rounded-lg border border-gray-200 bg-gray-50/60 px-3 py-2">
+                      <div className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500">
+                        <span className="text-brand-600">{kpi.icon}</span>
+                        {kpi.label}
+                      </div>
+                      <div className="mt-0.5 text-xl font-extrabold text-brand-900">{kpi.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {therapySummary.length === 0 ? (
+                  <div className="mt-4 rounded-lg border border-dashed border-gray-300 py-8 text-center text-sm text-gray-500">
+                    Nenhum atendimento de {selectedPatient} em {scopeLabel.toLowerCase()}.
+                  </div>
+                ) : (
+                  <div className="mt-4 overflow-x-auto rounded-lg border border-gray-200">
+                    <table className="w-full border-collapse text-left text-xs">
+                      <thead>
+                        <tr className="bg-brand-800 text-white">
+                          <th className="px-3 py-2.5 font-bold">ESPECIALIDADE</th>
+                          <th className="w-20 px-3 py-2.5 text-center font-bold">SESSÕES</th>
+                          <th className="w-28 px-3 py-2.5 text-center font-bold">CARGA HORÁRIA</th>
+                          <th className="px-3 py-2.5 font-bold">PROFISSIONAIS</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {therapySummary.map((t) => {
+                          const share = summaryTotals.minutes > 0 ? (t.minutes / summaryTotals.minutes) * 100 : 0;
+                          return (
+                            <tr key={t.specialty} className="align-top hover:bg-brand-50/40">
+                              <td className="px-3 py-2.5">
+                                <div className="font-bold text-brand-950">{t.specialty}</div>
+                                <div className="mt-1.5 h-1.5 w-full max-w-[180px] overflow-hidden rounded-full bg-gray-100">
+                                  <div className="h-full rounded-full bg-accent-500" style={{ width: `${share}%` }} />
+                                </div>
+                              </td>
+                              <td className="px-3 py-2.5 text-center text-sm font-extrabold text-gray-900">{t.sessions}</td>
+                              <td className="px-3 py-2.5 text-center text-sm font-extrabold text-brand-800">{formatMinutes(t.minutes)}</td>
+                              <td className="px-3 py-2.5">
+                                <div className="flex flex-col gap-1">
+                                  {t.professionals.map((p) => (
+                                    <div key={p.name} className="flex flex-wrap items-center gap-1.5">
+                                      <span className="font-bold text-gray-900">{p.name}</span>
+                                      <span className="rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-bold text-brand-800">
+                                        {p.sessions} sessão(ões) · {formatMinutes(p.minutes)}
+                                      </span>
+                                      <span className="text-[10px] font-medium text-gray-500">{p.days.map(dayShortLabel).join(', ')}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        <tr className="bg-brand-50 font-extrabold text-brand-950">
+                          <td className="px-3 py-2.5">TOTAL</td>
+                          <td className="px-3 py-2.5 text-center">{summaryTotals.sessions}</td>
+                          <td className="px-3 py-2.5 text-center">{formatMinutes(summaryTotals.minutes)}</td>
+                          <td className="px-3 py-2.5 text-xs font-semibold">
+                            {summaryTotals.specialties} especialidade(s) · {summaryTotals.professionals} profissional(is)
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <p className="mt-2 text-[11px] text-gray-500">
+                  Cada horário da grade (intervalo de {SESSION_MINUTES} min) com a mesma profissional conta como uma sessão.
+                </p>
+              </div>
             </div>
           ) : selectedDay !== 'SEMANA' ? (
             <div className="space-y-4">
@@ -881,10 +1192,10 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
               )}
 
               {/* Patient Banner Box (exact styling requested) */}
-              <div className="rounded-xl border border-emerald-200 bg-white p-4 shadow-xs">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-100 pb-3">
+              <div className="rounded-xl border border-brand-200 bg-white p-4 shadow-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-brand-100 pb-3">
                   <div>
-                    <div className="text-[11px] font-bold tracking-wider text-emerald-700 uppercase">
+                    <div className="text-[11px] font-bold tracking-wider text-brand-700 uppercase">
                       Ficha do Paciente
                     </div>
                     <div className="text-lg font-extrabold text-gray-900 tracking-tight">
@@ -898,7 +1209,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                         Choque de Horário
                       </span>
                     )}
-                    <span className="rounded-md bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800 border border-emerald-200">
+                    <span className="rounded-md bg-brand-100 px-2.5 py-1 text-xs font-bold text-brand-800 border border-brand-200">
                       {selectedDay} • {patientAppointmentsCountByDay[selectedDay]} Atendimento(s)
                     </span>
                     {displayRows.some((r) => r.isMultiple) && (
@@ -914,12 +1225,12 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                 <div className="mt-3 overflow-x-auto rounded-lg border border-gray-300 bg-white shadow-xs">
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
-                      <tr className="bg-emerald-800 text-white font-bold border-b border-emerald-950">
-                        <th className="py-2.5 px-3 w-24 text-center border-r border-emerald-700">
+                      <tr className="bg-brand-800 text-white font-bold border-b border-brand-950">
+                        <th className="py-2.5 px-3 w-24 text-center border-r border-brand-700">
                           {selectedDay}
                         </th>
-                        <th className="py-2.5 px-4 w-48 border-r border-emerald-700">ESPECIALIDADE</th>
-                        <th className="py-2.5 px-4 w-72 border-r border-emerald-700">PROFISSIONAL</th>
+                        <th className="py-2.5 px-4 w-48 border-r border-brand-700">ESPECIALIDADE</th>
+                        <th className="py-2.5 px-4 w-72 border-r border-brand-700">PROFISSIONAL</th>
                         <th className="py-2.5 px-4">HORÁRIO</th>
                       </tr>
                     </thead>
@@ -1075,12 +1386,12 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                             return (
                               <tr
                                 key={row.time}
-                                className="bg-emerald-50/70 hover:bg-emerald-100/60 transition-colors text-gray-900"
+                                className="bg-brand-50/70 hover:bg-brand-100/60 transition-colors text-gray-900"
                               >
-                                <td className="py-2 px-3 text-center border-r border-gray-200 font-bold text-emerald-950">
+                                <td className="py-2 px-3 text-center border-r border-gray-200 font-bold text-brand-950">
                                   {row.time}
                                 </td>
-                                <td className="py-2 px-4 border-r border-gray-200 font-semibold text-emerald-900">
+                                <td className="py-2 px-4 border-r border-gray-200 font-semibold text-brand-900">
                                   {row.specialty}
                                 </td>
                                 <td className="py-2 px-4 border-r border-gray-200 font-bold text-gray-900">
@@ -1170,10 +1481,10 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                 </div>
               )}
 
-              <div className="rounded-xl border border-emerald-200 bg-white p-4 shadow-xs">
+              <div className="rounded-xl border border-brand-200 bg-white p-4 shadow-xs">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-200 pb-3">
                   <div>
-                    <div className="text-[11px] font-bold tracking-wider text-emerald-700 uppercase">
+                    <div className="text-[11px] font-bold tracking-wider text-brand-700 uppercase">
                       Consolidado Semanal
                     </div>
                     <div className="text-lg font-extrabold text-gray-900">
@@ -1200,12 +1511,12 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                         className={`rounded-lg border bg-white overflow-hidden shadow-2xs transition-colors ${
                           dayHasConflict
                             ? 'border-red-400 ring-1 ring-red-400'
-                            : 'border-gray-200 hover:border-emerald-400'
+                            : 'border-gray-200 hover:border-brand-400'
                         }`}
                       >
                         <div
                           className={`px-3 py-2 text-white flex items-center justify-between ${
-                            dayHasConflict ? 'bg-red-800' : 'bg-emerald-800'
+                            dayHasConflict ? 'bg-red-800' : 'bg-brand-800'
                           }`}
                         >
                           <div className="flex items-center gap-1.5">
@@ -1218,7 +1529,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                           </div>
                           <span
                             className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
-                              dayHasConflict ? 'bg-red-950 text-red-200' : 'bg-emerald-950 text-emerald-200'
+                              dayHasConflict ? 'bg-red-950 text-red-200' : 'bg-brand-950 text-brand-200'
                             }`}
                           >
                             {activeOnly.length} sessões
@@ -1262,7 +1573,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                                   }`}
                                 >
                                   <div className="flex items-center justify-between">
-                                    <span className="font-bold text-emerald-900">{a.time}</span>
+                                    <span className="font-bold text-brand-900">{a.time}</span>
                                     <span className="text-[10px] font-bold text-gray-500 uppercase">{a.specialty}</span>
                                   </div>
                                   <div className="text-[11px] text-gray-800 truncate">{a.therapistName}</div>
@@ -1289,9 +1600,9 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
         {/* Footer Actions */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 bg-white px-6 py-3">
           <div className="text-xs text-gray-500 flex items-center gap-1.5">
-            <AlertCircle className="h-4 w-4 text-emerald-700 shrink-0" />
+            <AlertCircle className="h-4 w-4 text-brand-700 shrink-0" />
             <span>
-              Tabela formatada pronta para exportação e cópia direta no padrão do relatório Promédica.
+              Tabela pronta para exportação, impressão e cópia direta.
             </span>
           </div>
 
@@ -1300,8 +1611,8 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
               onClick={handleCopyTable}
               className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold shadow-xs transition-colors ${
                 copied
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-emerald-800 text-white hover:bg-emerald-900'
+                  ? 'bg-brand-600 text-white'
+                  : 'bg-brand-800 text-white hover:bg-brand-900'
               }`}
               title="Copiar texto tabulado para colar direto no Excel ou WhatsApp"
             >
@@ -1314,7 +1625,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3.5 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50 shadow-xs"
               title="Baixar arquivo Excel (.xlsx) da grade deste paciente"
             >
-              <FileSpreadsheet className="h-4 w-4 text-emerald-700" />
+              <FileSpreadsheet className="h-4 w-4 text-brand-700" />
               <span>Exportar Excel</span>
             </button>
 
