@@ -4,7 +4,6 @@ import { Plus, Edit2, Check, X, ZoomIn, ZoomOut, Users, Zap, Maximize2, Upload, 
 import { analyzeCellSlot } from '../utils/clinicalAlerts';
 import { findScheduleConflictsForDay, getConflictingPatientsForCell } from '../utils/conflictUtils';
 import { PatientCellDisplay } from './PatientCellDisplay';
-import { therapyHeaderColors } from '../utils/therapyColors';
 
 interface SpreadsheetGridProps {
   morningTimes: string[];
@@ -200,16 +199,13 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     rowClass: string,
     editable: boolean,
     keyPrefix: string,
-    sticky: string,
-    colorBy?: 'therapist' | 'specialty'
+    sticky: string
   ) => (
     <tr className={rowClass}>
       <th className={`${sticky} ${rowClass} py-1.5 px-0.5 text-center text-[9px] font-bold tracking-tight`}>{label}</th>
       {activeTherapists.map((therapist) => {
         const value = field === 'specialty' ? therapist.specialty || 'ESPECIALIDADE' : therapist[field];
         const isEditing = editable && editingHeader?.therapistId === therapist.id && editingHeader.field === field;
-        // Cor da especialidade (mesma de "Quantidade / Profissionais") nas linhas TERAPEUTA e ESPECIALIDADE
-        const colors = colorBy ? therapyHeaderColors(therapist.specialty) : null;
         return (
           <th
             key={`${keyPrefix}-${therapist.id}`}
@@ -218,12 +214,6 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
               width: ROOM_COL_WIDTH,
               minWidth: ROOM_COL_WIDTH,
               maxWidth: ROOM_COL_WIDTH,
-              ...(colors
-                ? {
-                    backgroundColor: colorBy === 'therapist' ? colors.therapistBg : colors.specialtyBg,
-                    color: colors.text,
-                  }
-                : {}),
             }}
           >
             {isEditing ? (
@@ -489,8 +479,8 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
         >
           <thead className="sticky top-0 z-20">
             {headerRow('roomName', 'SALA', 'bg-brand-700 text-white tracking-wider', true, 'sala', stickyHeadCell)}
-            {headerRow('name', 'TERAPEUTA', 'bg-brand-100 text-brand-900', true, 'name', stickyHeadCell, 'therapist')}
-            {headerRow('specialty', 'HORÁRIO', 'bg-brand-200 text-brand-900', true, 'spec', stickyHeadCell, 'specialty')}
+            {headerRow('name', 'TERAPEUTA', 'bg-brand-100 text-brand-900', true, 'name', stickyHeadCell)}
+            {headerRow('specialty', 'HORÁRIO', 'bg-accent-50 text-accent-800', true, 'spec', stickyHeadCell)}
           </thead>
 
           <tbody>
@@ -506,8 +496,8 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
             )}
 
             {/* Cabeçalhos repetidos para o turno da tarde */}
-            {headerRow('name', 'TERAPEUTA', 'bg-brand-100 text-brand-900', false, 'pm-name', stickyTimeCell, 'therapist')}
-            {headerRow('specialty', 'HORÁRIO', 'bg-brand-200 text-brand-900', false, 'pm-spec', stickyTimeCell, 'specialty')}
+            {headerRow('name', 'TERAPEUTA', 'bg-brand-100 text-brand-900', false, 'pm-name', stickyTimeCell)}
+            {headerRow('specialty', 'HORÁRIO', 'bg-accent-50 text-accent-800', false, 'pm-spec', stickyTimeCell)}
 
             {timeRows(afternoonTimes, 'afternoon')}
             {addTimeRow('afternoon', 'Hora', 'Inserir horário personalizado de tarde', 'Pressione Enter para adicionar horário de tarde')}

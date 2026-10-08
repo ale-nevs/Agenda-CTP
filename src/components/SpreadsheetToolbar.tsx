@@ -89,7 +89,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
               >
                 <span>{label}</span>
                 {hasData && (
-                  <span className={`h-1.5 w-1.5 rounded-full ${isSelected ? 'bg-brand-200' : 'bg-brand-500'}`} />
+                  <span className={`h-1.5 w-1.5 rounded-full ${isSelected ? 'bg-accent-200' : 'bg-accent-500'}`} />
                 )}
               </button>
             );
@@ -145,7 +145,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
           <button
             onClick={onExportExcel}
             disabled={exportDisabled}
-            className={`${exportBtn} border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700`}
+            className={`${exportBtn} border-accent-600 bg-accent-600 text-white hover:bg-accent-700`}
             title="Baixar planilha Excel (.xlsx) no mesmo formato da tabela"
           >
             {spinnerOr('excel', <FileSpreadsheet className="h-3.5 w-3.5" />)}
@@ -208,8 +208,8 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
           >
             12h–13h: {showLunchPlaceholder ? 'legenda "ALMOÇO"' : 'células livres'}
           </button>
-          <span className="rounded-lg bg-brand-50 px-2.5 py-1 font-semibold text-brand-800 ring-1 ring-brand-200">
-            Grade 30 min · <strong className="text-brand-800">{totalAppointments}</strong> agendamentos
+          <span className="rounded-lg bg-accent-50 px-2.5 py-1 font-semibold text-accent-800 ring-1 ring-accent-200">
+            Grade 30 min · <strong className="text-accent-700">{totalAppointments}</strong> agendamentos
           </span>
         </div>
       </div>

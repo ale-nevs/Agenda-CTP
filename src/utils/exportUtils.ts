@@ -7,7 +7,6 @@ import {
   getConflictingPatientsForCell,
   normalizePatientName,
 } from './conflictUtils';
-import { therapyHeaderColors } from './therapyColors';
 import { APP_FULL_NAME, APP_NAME, APP_SUBTITLE, BRAND, FONT_FAMILY, getLogoDataUrl, getLogoPngBase64 } from '../brand';
 
 export interface ExportTableData {
@@ -272,7 +271,7 @@ const DOCUMENT_CSS = `
   thead th { text-align: center; font-weight: 800; }
   tr.h-sala th { background: ${BRAND.primary}; color: #fff; letter-spacing: .3px; }
   tr.h-terapeuta th { background: ${BRAND.primaryLight}; color: ${BRAND.primaryDarker}; }
-  tr.h-especialidade th { background: ${BRAND.primaryLight}; color: ${BRAND.primaryDarker}; }
+  tr.h-especialidade th { background: ${BRAND.secondaryLight}; color: ${BRAND.secondaryText}; }
   th.corner { font-size: .72em; letter-spacing: -.2px; padding: 2px 1px; }
   tbody td.time { text-align: center; font-weight: 800; background: ${BRAND.primarySoft}; color: ${BRAND.primaryDarker}; }
   tbody tr { page-break-inside: avoid; break-inside: avoid; }
@@ -338,13 +337,10 @@ function buildPagesHtml(model: ScheduleModel, logoDataUrl: string | null): { htm
         <thead>
           <tr class="h-sala"><th class="corner">SALA</th>${rooms.map((t) => `<th>${escapeHtml(t.roomName)}</th>`).join('')}</tr>
           <tr class="h-terapeuta"><th class="corner">TERAPEUTA</th>${rooms
-            .map((t) => `<th style="background:${therapyHeaderColors(t.specialty).therapistBg}">${escapeHtml(t.name)}</th>`)
+            .map((t) => `<th>${escapeHtml(t.name)}</th>`)
             .join('')}</tr>
           <tr class="h-especialidade"><th class="corner">HORÁRIO</th>${rooms
-            .map(
-              (t) =>
-                `<th style="background:${therapyHeaderColors(t.specialty).specialtyBg}">${escapeHtml(t.specialty || 'ESPECIALIDADE')}</th>`
-            )
+            .map((t) => `<th>${escapeHtml(t.specialty || 'ESPECIALIDADE')}</th>`)
             .join('')}</tr>
         </thead>`;
 
@@ -608,20 +604,13 @@ export async function exportExcel(data: ExportTableData) {
 
   let rowIdx = 4;
 
-  const addHeaderRow = (
-    label: string,
-    values: string[],
-    bg: string,
-    color: string,
-    size = 10,
-    colBg?: (i: number) => string
-  ) => {
+  const addHeaderRow = (label: string, values: string[], bg: string, color: string, size = 10) => {
     const row = ws.getRow(rowIdx++);
     row.values = [label, ...values];
     row.height = 22;
     for (let c = 1; c <= nCols; c++) {
       const cell = row.getCell(c);
-      cell.fill = fill(c > 1 && colBg ? colBg(c - 2) : bg);
+      cell.fill = fill(bg);
       cell.font = { name: font, size, bold: true, color: { argb: argb(color) } };
       cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
       cell.border = border;
@@ -651,12 +640,8 @@ export async function exportExcel(data: ExportTableData) {
     }
     addShiftTitle(`${shift.label.toUpperCase()} · ${shift.rangeLabel}`);
     addHeaderRow('SALA', roomNames, BRAND.primary, '#FFFFFF');
-    addHeaderRow('TERAPEUTA', therapistNames, BRAND.primaryLight, BRAND.primaryDarker, 9, (i) =>
-      therapyHeaderColors(rooms[i].specialty).therapistBg
-    );
-    addHeaderRow('HORÁRIO', specialties, BRAND.primaryLight, BRAND.primaryDarker, 9, (i) =>
-      therapyHeaderColors(rooms[i].specialty).specialtyBg
-    );
+    addHeaderRow('TERAPEUTA', therapistNames, BRAND.primaryLight, BRAND.primaryDarker, 9);
+    addHeaderRow('HORÁRIO', specialties, BRAND.secondaryLight, BRAND.secondaryText, 9);
 
     const shiftStartRow = rowIdx;
     const emptyIds = emptyShiftRoomIds(model, shift, rooms);

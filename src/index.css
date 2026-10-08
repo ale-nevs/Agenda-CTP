@@ -5,31 +5,37 @@
   /* Fonte do site promedica.com.br (font-helvetica) */
   --font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
 
-  /* Petróleo — cor principal da interface (selecionado = 700; selecionável = 50/100).
+  /* Paleta executiva (saúde)
+     brand  = azul-marinho: estrutura, cabeçalhos, selecionado (700) e selecionável (50/100)
+     accent = verde-azulado (teal): ações secundárias, indicadores e números
      O vermelho fica reservado para alertas e choques. */
-  --color-brand-50: #ecfbfd;
-  --color-brand-100: #d2f3f8;
-  --color-brand-200: #a8e6f0;
-  --color-brand-300: #6fd1e2;
-  --color-brand-400: #33b3cb;
-  --color-brand-500: #1797b0;
-  --color-brand-600: #127a92;
-  --color-brand-700: #136377;
-  --color-brand-800: #165263;
-  --color-brand-900: #174554;
-  --color-brand-950: #082c39;
+  --color-brand-50: #f2f6fb;
+  --color-brand-100: #e1eaf4;
+  --color-brand-200: #c5d5e8;
+  --color-brand-300: #9bb6d5;
+  --color-brand-400: #6a90bd;
+  --color-brand-500: #4872a4;
+  --color-brand-600: #375b88;
+  --color-brand-700: #2c4a70;
+  --color-brand-800: #233c5c;
+  --color-brand-900: #1e3350;
+  --color-brand-950: #13223a;
 
-  /* Cinzas Promédica (promedica-gray / promedica-dark-gray) */
-  --color-accent-50: #f5f5f5;
-  --color-accent-100: #e8e8e8;
-  --color-accent-500: #6f6f6e;
-  --color-accent-600: #4a4a49;
-  --color-accent-700: #3c3c3b;
+  --color-accent-50: #effaf8;
+  --color-accent-100: #d3f0ea;
+  --color-accent-200: #a7e0d5;
+  --color-accent-300: #6fc9b9;
+  --color-accent-400: #3aae9c;
+  --color-accent-500: #1f9282;
+  --color-accent-600: #17786b;
+  --color-accent-700: #155f56;
+  --color-accent-800: #144d47;
+  --color-accent-900: #12403b;
 }
 
 html, body {
   font-family: var(--font-sans);
-  background-color: #f5f5f5;
+  background-color: #f4f6f9;
 }
 
 @media print {

@@ -342,10 +342,10 @@ export default function App() {
             </span>
             {hasDayData && (
               <>
-                <span className="rounded-lg bg-brand-50 px-2.5 py-1.5 font-semibold text-brand-800 ring-1 ring-brand-200">
+                <span className="rounded-lg bg-slate-100 px-2.5 py-1.5 font-semibold text-slate-700 ring-1 ring-slate-200">
                   {activeTherapists.length} salas
                 </span>
-                <span className="rounded-lg bg-brand-50 px-2.5 py-1.5 font-semibold text-brand-800 ring-1 ring-brand-200">
+                <span className="rounded-lg bg-accent-50 px-2.5 py-1.5 font-semibold text-accent-700 ring-1 ring-accent-200">
                   {totalAppointmentsCount} consultas
                 </span>
                 <span

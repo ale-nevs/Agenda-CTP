@@ -1088,7 +1088,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
             {selectedPatient && (
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <span className="font-semibold text-gray-600">Total na semana:</span>
-                <span className="rounded-full bg-brand-700 px-2.5 py-0.5 font-bold text-white shadow-xs">
+                <span className="rounded-full bg-accent-600 px-2.5 py-0.5 font-bold text-white shadow-xs">
                   {Object.values(patientAppointmentsCountByDay).reduce((a, b) => a + b, 0)} atendimentos
                 </span>
                 <span className="text-gray-400">|</span>
@@ -1132,7 +1132,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                       isSelected
                         ? 'bg-white text-brand-800'
                         : count > 0
-                        ? 'bg-brand-600 text-white'
+                        ? 'bg-accent-600 text-white'
                         : 'bg-gray-100 text-gray-400'
                     }`}
                   >
@@ -1200,7 +1200,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
               <div className="rounded-xl border border-brand-200 bg-white p-4 shadow-xs">
                 <div className="flex flex-col gap-1 border-b border-brand-100 pb-3 sm:flex-row sm:items-end sm:justify-between">
                   <div>
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-brand-700">Quantidade / Profissionais</div>
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-accent-600">Quantidade / Profissionais</div>
                     <div className="text-lg font-extrabold tracking-tight text-gray-900">PACIENTE: {selectedPatient}</div>
                   </div>
                   <span className="self-start rounded-md border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-bold text-brand-800 sm:self-auto">
@@ -1218,7 +1218,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                   ].map((kpi) => (
                     <div key={kpi.label} className="rounded-lg border border-gray-200 bg-gray-50/60 px-3 py-2">
                       <div className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500">
-                        <span className="text-brand-600">{kpi.icon}</span>
+                        <span className="text-accent-600">{kpi.icon}</span>
                         {kpi.label}
                       </div>
                       <div className="mt-0.5 text-xl font-extrabold text-brand-950">{kpi.value}</div>
@@ -1348,7 +1348,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
               <div className="rounded-xl border border-brand-200 bg-white p-4 shadow-xs">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-brand-100 pb-3">
                   <div>
-                    <div className="text-[11px] font-bold tracking-wider text-brand-700 uppercase">
+                    <div className="text-[11px] font-bold tracking-wider text-accent-600 uppercase">
                       Ficha do Paciente
                     </div>
                     <div className="text-lg font-extrabold text-gray-900 tracking-tight">
@@ -1636,7 +1636,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
               <div className="rounded-xl border border-brand-200 bg-white p-4 shadow-xs">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-200 pb-3">
                   <div>
-                    <div className="text-[11px] font-bold tracking-wider text-brand-700 uppercase">
+                    <div className="text-[11px] font-bold tracking-wider text-accent-600 uppercase">
                       Consolidado Semanal
                     </div>
                     <div className="text-lg font-extrabold text-gray-900">
@@ -1763,7 +1763,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
               onClick={handleCopyTable}
               className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold shadow-xs transition-colors ${
                 copied
-                  ? 'bg-brand-600 text-white'
+                  ? 'bg-accent-600 text-white'
                   : 'bg-brand-700 text-white hover:bg-brand-800'
               }`}
               title="Copiar texto tabulado para colar direto no Excel ou WhatsApp"
