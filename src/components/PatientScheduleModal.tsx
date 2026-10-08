@@ -1,0 +1,1334 @@
+import React, { useState, useMemo } from 'react';
+import {
+  X,
+  Search,
+  Users,
+  Copy,
+  Check,
+  FileSpreadsheet,
+  Printer,
+  Calendar,
+  AlertCircle,
+  Eye,
+  EyeOff,
+  UserCheck,
+  AlertTriangle,
+  Zap
+} from 'lucide-react';
+import { ParsedReport, DayOfWeekKey, DAYS_OF_WEEK } from '../types';
+import { normalizePatientName, normalizeTherapistName } from '../utils/conflictUtils';
+import * as XLSX from 'xlsx';
+
+interface PatientScheduleModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  weeklyReports: Record<DayOfWeekKey, ParsedReport | null>;
+  initialDay?: DayOfWeekKey;
+  initialPatientName?: string;
+  activeTherapistsForDay?: (day: DayOfWeekKey) => any[];
+}
+
+export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
+  isOpen,
+  onClose,
+  weeklyReports,
+  initialDay = 'SEGUNDA',
+  initialPatientName = '',
+}) => {
+  const [selectedDay, setSelectedDay] = useState<DayOfWeekKey | 'SEMANA'>(initialDay);
+  const [patientQuery, setPatientQuery] = useState<string>(initialPatientName);
+  const [selectedPatient, setSelectedPatient] = useState<string>(initialPatientName);
+  const [copied, setCopied] = useState(false);
+  const [hideNotFound, setHideNotFound] = useState(false);
+
+  // Extract all unique patients across all uploaded days
+  const allPatientsWithStats = useMemo(() => {
+    const statsMap = new Map<string, { total: number; days: Set<DayOfWeekKey> }>();
+
+    Object.entries(weeklyReports).forEach(([dayKey, report]) => {
+      if (!report) return;
+      report.therapists.forEach((t) => {
+        t.appointments.forEach((a) => {
+          const name = a.patientName?.trim();
+          if (name && name.length > 2 && !name.includes('AGENDADOS')) {
+            const current = statsMap.get(name) || { total: 0, days: new Set<DayOfWeekKey>() };
+            current.total += 1;
+            current.days.add(dayKey as DayOfWeekKey);
+            statsMap.set(name, current);
+          }
+        });
+      });
+    });
+
+    return Array.from(statsMap.entries())
+      .map(([name, stat]) => ({
+        name,
+        total: stat.total,
+        days: Array.from(stat.days),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [weeklyReports]);
+
+  // Set default patient if none selected
+  React.useEffect(() => {
+    if (!selectedPatient && allPatientsWithStats.length > 0) {
+      // Find JOAQUIM PAULO MOREIRA or first patient
+      const joaquim = allPatientsWithStats.find((p) => p.name.includes('JOAQUIM PAULO MOREIRA'));
+      if (joaquim) {
+        setSelectedPatient(joaquim.name);
+        setPatientQuery(joaquim.name);
+      } else {
+        setSelectedPatient(allPatientsWithStats[0].name);
+        setPatientQuery(allPatientsWithStats[0].name);
+      }
+    }
+  }, [allPatientsWithStats, selectedPatient]);
+
+  // Filtered patients for search autocomplete
+  const filteredPatients = useMemo(() => {
+    if (!patientQuery.trim()) return allPatientsWithStats.slice(0, 10);
+    const q = patientQuery.toUpperCase();
+    return allPatientsWithStats.filter((p) => p.name.includes(q)).slice(0, 10);
+  }, [allPatientsWithStats, patientQuery]);
+
+  // Standard time slots: 07:00 through 18:30 in 30-minute intervals
+  const standardTimeSlots = useMemo(() => {
+    const slots: string[] = [];
+    const startHour = 7;
+    const endHour = 18;
+    for (let h = startHour; h <= endHour; h++) {
+      const hStr = h.toString().padStart(2, '0');
+      slots.push(`${hStr}:00`);
+      slots.push(`${hStr}:30`);
+    }
+    return slots;
+  }, []);
+
+  // Compute patient schedule for a given day
+  const getDaySchedule = (day: DayOfWeekKey, patientName: string) => {
+    const report = weeklyReports[day];
+    if (!report || !patientName) return [];
+
+    const normPatient = normalizePatientName(patientName);
+
+    // Map: slot -> appointments in this slot for therapists treating this patient
+    // Or therapists who have this patient scheduled in that 30-min window
+    return standardTimeSlots.map((slotTime) => {
+      const [slotH, slotM] = slotTime.split(':').map(Number);
+      const slotStart = slotH * 60 + slotM;
+      const slotEnd = slotStart + 29;
+
+      // Find ALL therapists who have this patient in this 30-min window
+      const matchingBookings: Array<{
+        therapist: any;
+        patientApp: any;
+        slotApps: any[];
+      }> = [];
+
+      for (const therapist of report.therapists) {
+        // Find appointments for this therapist in this window
+        const appsInWindow = therapist.appointments.filter((a) => {
+          const [aH, aM] = a.time.split(':').map(Number);
+          const aTotal = aH * 60 + aM;
+          return aTotal >= slotStart && aTotal <= slotEnd;
+        });
+
+        // Check if our target patient is in this window
+        const patientMatch = appsInWindow.find(
+          (a) => normalizePatientName(a.patientName) === normPatient
+        );
+
+        if (patientMatch) {
+          matchingBookings.push({
+            therapist,
+            patientApp: patientMatch,
+            slotApps: appsInWindow,
+          });
+        }
+      }
+
+      if (matchingBookings.length === 0) {
+        return {
+          time: slotTime,
+          specialty: 'NÃO ENCONTRADO',
+          therapistName: 'NÃO ENCONTRADO',
+          agendaText: 'NÃO ENCONTRADO',
+          isMultiple: false,
+          isDupla: false,
+          isGrupo: false,
+          hasClinicalAlert: false,
+          patientList: [],
+          roomName: '',
+          found: false,
+          isConflict: false,
+          conflictDetails: null,
+        };
+      }
+
+      // Check if patient is booked with 2 or more DIFFERENT therapists at this 30-minute time slot
+      const distinctTherapistNames = new Set(
+        matchingBookings.map((b) => normalizeTherapistName(b.therapist.name) || b.therapist.id)
+      );
+      const isConflict = distinctTherapistNames.size > 1;
+
+      // Primary therapist (first one) or combined
+      const firstBooking = matchingBookings[0];
+      const matchingTherapist = firstBooking.therapist;
+      const matchingAppointments = firstBooking.slotApps;
+
+      const count = matchingAppointments.length;
+      const isDupla = count === 2;
+      const isGrupo = count > 2;
+      const isMultiple = count > 1;
+
+      // Detect clinical alert for Fono Prompt or TO Ayres when in dupla or grupo
+      const patientList = matchingAppointments.map((a) => {
+        const spec = (matchingTherapist.specialty || a.specialty || '').toUpperCase();
+        const sRaw = (a.serviceRaw || '').toUpperCase();
+        const isPromptOrAyres = (isDupla || isGrupo) && (
+          spec.includes('PROMPT') || spec.includes('AYRES') ||
+          sRaw.includes('PROMPT') || sRaw.includes('AYRES')
+        );
+        return {
+          name: a.patientName,
+          time: a.time,
+          isPromptOrAyres,
+        };
+      });
+
+      const hasClinicalAlert = patientList.some((p) => p.isPromptOrAyres);
+
+      let therapistName = matchingTherapist.name;
+      let specialty = matchingTherapist.specialty || matchingAppointments[0].specialty || 'ESPECIALIDADE';
+      let agendaText = '';
+      let roomName = matchingTherapist.roomName;
+
+      let conflictDetails: any = null;
+
+      if (isConflict) {
+        conflictDetails = {
+          therapistCount: matchingBookings.length,
+          bookings: matchingBookings.map((b) => ({
+            therapistName: b.therapist.name,
+            roomName: b.therapist.roomName,
+            specialty: b.therapist.specialty || b.patientApp.specialty || '',
+            time: b.patientApp.time,
+          })),
+          description: matchingBookings
+            .map((b) => `${b.therapist.roomName} (${b.therapist.name}) às ${b.patientApp.time}`)
+            .join('  ⚡  '),
+        };
+
+        therapistName = matchingBookings
+          .map((b) => `${b.therapist.name} (${b.therapist.roomName})`)
+          .join('  ⚡  ');
+
+        specialty = Array.from(
+          new Set(
+            matchingBookings
+              .map((b) => b.therapist.specialty || b.patientApp.specialty)
+              .filter(Boolean)
+          )
+        ).join(' / ');
+
+        agendaText = matchingBookings
+          .map(
+            (b) =>
+              `${b.therapist.roomName}: ${b.patientApp.patientName} (${b.patientApp.time}) c/ ${b.therapist.name}`
+          )
+          .join('  ⚡  ');
+
+        roomName = matchingBookings.map((b) => b.therapist.roomName).join(' e ');
+      } else if (isMultiple) {
+        agendaText = matchingAppointments
+          .map((a) => `${a.patientName} (${a.time})`)
+          .join(' / ');
+      } else {
+        agendaText = matchingAppointments[0].patientName;
+      }
+
+      return {
+        time: slotTime,
+        specialty,
+        therapistName,
+        agendaText,
+        isMultiple,
+        isDupla,
+        isGrupo,
+        count,
+        hasClinicalAlert,
+        patientList,
+        roomName,
+        found: true,
+        isConflict,
+        conflictDetails,
+      };
+    });
+  };
+
+  // Count appointments per day for this patient
+  const patientAppointmentsCountByDay = useMemo(() => {
+    const counts: Record<DayOfWeekKey, number> = {
+      SEGUNDA: 0,
+      TERÇA: 0,
+      QUARTA: 0,
+      QUINTA: 0,
+      SEXTA: 0,
+      SÁBADO: 0,
+    };
+
+    if (!selectedPatient) return counts;
+    const norm = selectedPatient.trim().toUpperCase();
+
+    Object.entries(weeklyReports).forEach(([dayKey, report]) => {
+      if (!report) return;
+      let count = 0;
+      report.therapists.forEach((t) => {
+        t.appointments.forEach((a) => {
+          if (a.patientName?.trim().toUpperCase() === norm) {
+            count++;
+          }
+        });
+      });
+      counts[dayKey as DayOfWeekKey] = count;
+    });
+
+    return counts;
+  }, [weeklyReports, selectedPatient]);
+
+  // Current active day's schedule
+  const currentSchedule = useMemo(() => {
+    if (selectedDay === 'SEMANA') return [];
+    return getDaySchedule(selectedDay, selectedPatient);
+  }, [selectedDay, selectedPatient, weeklyReports]);
+
+  // Display rows (filtered or unfiltered)
+  const displayRows = useMemo(() => {
+    if (hideNotFound) {
+      return currentSchedule.filter((r) => r.found);
+    }
+    return currentSchedule;
+  }, [currentSchedule, hideNotFound]);
+
+  // Detect schedule conflicts for this patient
+  const activeConflicts = useMemo(() => {
+    if (!selectedPatient) return [];
+    if (selectedDay !== 'SEMANA') {
+      return currentSchedule
+        .filter((r) => r.isConflict && r.conflictDetails)
+        .map((r) => ({
+          day: selectedDay,
+          dayLabel: DAYS_OF_WEEK.find((d) => d.key === selectedDay)?.fullLabel || selectedDay,
+          slotTime: r.time,
+          details: r.conflictDetails,
+        }));
+    } else {
+      const list: Array<{
+        day: DayOfWeekKey;
+        dayLabel: string;
+        slotTime: string;
+        details: any;
+      }> = [];
+      DAYS_OF_WEEK.forEach((d) => {
+        const schedule = getDaySchedule(d.key, selectedPatient);
+        schedule.forEach((r) => {
+          if (r.isConflict && r.conflictDetails) {
+            list.push({
+              day: d.key,
+              dayLabel: d.fullLabel,
+              slotTime: r.time,
+              details: r.conflictDetails,
+            });
+          }
+        });
+      });
+      return list;
+    }
+  }, [selectedPatient, selectedDay, currentSchedule, weeklyReports]);
+
+  // Copy table to clipboard in text format requested by user
+  const handleCopyTable = async () => {
+    if (!selectedPatient) return;
+
+    let textToCopy = '';
+
+    if (selectedDay !== 'SEMANA') {
+      const dayLabel = selectedDay;
+      textToCopy += `\tPACIENTE: ${selectedPatient}\t\t\n`;
+      if (activeConflicts.length > 0) {
+        textToCopy += `⚠️ ATENÇÃO: ${activeConflicts.length} CHOQUE(S) DE HORÁRIO DETECTADO(S)!\n`;
+      }
+      textToCopy += `${dayLabel}\tESPECIALIDADE\tPROFISSIOAL\tHORÁRIO\n`;
+
+      const rows = hideNotFound ? currentSchedule.filter((r) => r.found) : currentSchedule;
+      rows.forEach((r) => {
+        const conflictMarker = r.isConflict ? ' [⚠️ CHOQUE DE HORÁRIO]' : '';
+        textToCopy += `${r.time}\t${r.specialty}\t${r.therapistName}\t${r.agendaText}${conflictMarker}\n`;
+      });
+    } else {
+      // Full week
+      textToCopy += `\tPACIENTE: ${selectedPatient} - GRADE SEMANAL\t\t\n`;
+      if (activeConflicts.length > 0) {
+        textToCopy += `⚠️ ATENÇÃO: ${activeConflicts.length} CHOQUE(S) DE HORÁRIO DETECTADO(S) NA SEMANA!\n`;
+      }
+      textToCopy += `\n`;
+      DAYS_OF_WEEK.forEach((d) => {
+        const schedule = getDaySchedule(d.key, selectedPatient);
+        const activeOnly = schedule.filter((s) => s.found);
+        textToCopy += `=== ${d.fullLabel.toUpperCase()} (${activeOnly.length} atendimentos) ===\n`;
+        textToCopy += `HORÁRIO\tESPECIALIDADE\tPROFISSIOAL\tAGENDA\n`;
+        schedule.forEach((r) => {
+          if (!hideNotFound || r.found) {
+            const conflictMarker = r.isConflict ? ' [⚠️ CHOQUE DE HORÁRIO]' : '';
+            textToCopy += `${r.time}\t${r.specialty}\t${r.therapistName}\t${r.agendaText}${conflictMarker}\n`;
+          }
+        });
+        textToCopy += `\n`;
+      });
+    }
+
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch (err) {
+      console.error('Falha ao copiar:', err);
+    }
+  };
+
+  // Export patient schedule to Excel (.xlsx)
+  const handleExportExcel = () => {
+    if (!selectedPatient) return;
+
+    const wb = XLSX.utils.book_new();
+
+    if (selectedDay !== 'SEMANA') {
+      const rows = [
+        ['', `PACIENTE: ${selectedPatient}`, '', '', ''],
+        ...(activeConflicts.length > 0
+          ? [['⚠️ ALERTA', `${activeConflicts.length} CHOQUE(S) DE HORÁRIO DETECTADO(S)`, '', '', '']]
+          : []),
+        [selectedDay, 'ESPECIALIDADE', 'PROFISSIOAL', 'HORÁRIO', 'SALA', 'OBSERVAÇÕES'],
+        ...displayRows.map((r) => [
+          r.time,
+          r.specialty,
+          r.therapistName,
+          r.agendaText,
+          r.roomName || '',
+          r.isConflict ? '⚠️ CHOQUE DE HORÁRIO' : r.isDupla ? 'Dupla' : r.isGrupo ? 'Grupo' : '',
+        ]),
+      ];
+
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      ws['!cols'] = [{ wch: 10 }, { wch: 25 }, { wch: 40 }, { wch: 50 }, { wch: 12 }, { wch: 22 }];
+      XLSX.utils.book_append_sheet(wb, ws, selectedDay);
+    } else {
+      // All days as separate sheets or single sheet
+      DAYS_OF_WEEK.forEach((d) => {
+        const schedule = getDaySchedule(d.key, selectedPatient);
+        const dayConflicts = schedule.filter((s) => s.isConflict);
+        const rows = [
+          ['', `PACIENTE: ${selectedPatient} - ${d.fullLabel.toUpperCase()}`, '', '', ''],
+          ...(dayConflicts.length > 0
+            ? [['⚠️ ALERTA', `${dayConflicts.length} CHOQUE(S) DE HORÁRIO NESTE DIA`, '', '', '']]
+            : []),
+          [d.key, 'ESPECIALIDADE', 'PROFISSIOAL', 'HORÁRIO', 'SALA', 'OBSERVAÇÕES'],
+          ...schedule.map((r) => [
+            r.time,
+            r.specialty,
+            r.therapistName,
+            r.agendaText,
+            r.roomName || '',
+            r.isConflict ? '⚠️ CHOQUE DE HORÁRIO' : r.isDupla ? 'Dupla' : r.isGrupo ? 'Grupo' : '',
+          ]),
+        ];
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        ws['!cols'] = [{ wch: 10 }, { wch: 25 }, { wch: 40 }, { wch: 50 }, { wch: 12 }, { wch: 22 }];
+        XLSX.utils.book_append_sheet(wb, ws, d.label);
+      });
+    }
+
+    const cleanName = selectedPatient.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
+    XLSX.writeFile(wb, `Grade_${cleanName}_${selectedDay}.xlsx`);
+  };
+
+  // Dedicated clean printing for patient schedule
+  const handlePrintPatient = () => {
+    if (!selectedPatient) return;
+
+    const printWin = window.open('', '_blank', 'width=900,height=700');
+    if (!printWin) {
+      window.print();
+      return;
+    }
+
+    const title = selectedDay !== 'SEMANA' 
+      ? `Grade de Atendimento - ${selectedPatient} (${selectedDay})` 
+      : `Grade Semanal de Atendimento - ${selectedPatient}`;
+
+    let bodyHtml = '';
+
+    const conflictAlertHtml = activeConflicts.length > 0 ? `
+      <div style="background-color: #fee2e2; border: 2px solid #dc2626; padding: 8px 12px; margin-bottom: 12px; border-radius: 6px; color: #7f1d1d;">
+        <div style="font-weight: 900; font-size: 12px; display: flex; align-items: center; gap: 4px;">
+          ⚡ ALERTA: ${activeConflicts.length} CHOQUE(S) DE HORÁRIO DETECTADO(S)!
+        </div>
+        <div style="font-size: 10.5px; margin-top: 3px;">
+          O paciente possui agendamentos sobrepostos em salas/profissionais diferentes no mesmo horário.
+        </div>
+      </div>
+    ` : '';
+
+    if (selectedDay !== 'SEMANA') {
+      const rows = hideNotFound ? currentSchedule.filter((r) => r.found) : currentSchedule;
+      const count = patientAppointmentsCountByDay[selectedDay];
+
+      bodyHtml = `
+        <div class="header">
+          <h1>CLÍNICA PROMÉDICA &bull; GRADE DO PACIENTE</h1>
+          <p><strong>PACIENTE:</strong> ${selectedPatient}</p>
+          <p><strong>DIA:</strong> ${selectedDay} &bull; <strong>TOTAL DE ATENDIMENTOS:</strong> ${count}</p>
+          <div class="legend">
+            <strong>LEGENDA:</strong> 
+            <span class="badge badge-choque">⚡ Choque</span> Choque de Horário (2+ profissionais) &bull;
+            <span class="badge badge-dupla">Dupla</span> (2 pacientes) &bull; 
+            <span class="badge badge-grupo">Grupo</span> (3+ pacientes) &bull; 
+            <span class="alert-icon">!</span> Alerta Fono Prompt / TO Ayres
+          </div>
+        </div>
+        ${conflictAlertHtml}
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 70px; text-align: center;">${selectedDay}</th>
+              <th style="width: 140px;">ESPECIALIDADE</th>
+              <th style="width: 200px;">PROFISSIONAL</th>
+              <th>HORÁRIO / AGENDA</th>
+              <th style="width: 80px; text-align: center;">SALA</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((r) => {
+              const bgClass = r.isConflict
+                ? 'class="row-choque"'
+                : r.isDupla
+                ? 'class="row-dupla"'
+                : r.isGrupo
+                ? 'class="row-grupo"'
+                : r.found
+                ? 'class="row-found"'
+                : 'class="row-notfound"';
+              
+              let agendaCell = r.agendaText;
+              if (r.isConflict) {
+                agendaCell = `
+                  <div>
+                    <div style="margin-bottom: 3px;"><span class="badge badge-choque">⚡ CHOQUE DE HORÁRIO</span></div>
+                    <div style="font-weight: bold;">${r.agendaText}</div>
+                  </div>
+                `;
+              } else if (r.patientList && r.patientList.length > 1) {
+                const badge = r.isDupla 
+                  ? '<span class="badge badge-dupla">Dupla</span>' 
+                  : `<span class="badge badge-grupo">Grupo (${r.count})</span>`;
+                const list = r.patientList.map((p: any) => {
+                  const alertBadge = p.isPromptOrAyres ? '<span class="alert-icon">!</span>' : '';
+                  return `<div>${p.name}${p.time ? ` (${p.time})` : ''} ${alertBadge}</div>`;
+                }).join('');
+                agendaCell = `<div><div style="margin-bottom: 2px;">${badge}</div>${list}</div>`;
+              }
+
+              return `
+                <tr ${bgClass}>
+                  <td style="text-align: center; font-weight: bold;">${r.time}</td>
+                  <td>${r.specialty}</td>
+                  <td>${r.therapistName}</td>
+                  <td>${agendaCell}</td>
+                  <td style="text-align: center;">${r.roomName || '-'}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      `;
+    } else {
+      // Full week printing
+      bodyHtml = `
+        <div class="header">
+          <h1>CLÍNICA PROMÉDICA &bull; GRADE SEMANAL DO PACIENTE</h1>
+          <p><strong>PACIENTE:</strong> ${selectedPatient}</p>
+          <div class="legend">
+            <strong>LEGENDA:</strong> 
+            <span class="badge badge-choque">⚡ Choque</span> Choque de Horário (2+ profissionais) &bull;
+            <span class="badge badge-dupla">Dupla</span> (2 pacientes) &bull; 
+            <span class="badge badge-grupo">Grupo</span> (3+ pacientes) &bull; 
+            <span class="alert-icon">!</span> Alerta Fono Prompt / TO Ayres
+          </div>
+        </div>
+        ${conflictAlertHtml}
+      `;
+
+      DAYS_OF_WEEK.forEach((d) => {
+        const schedule = getDaySchedule(d.key, selectedPatient);
+        const activeRows = schedule.filter((s) => s.found);
+        if (activeRows.length === 0) return;
+
+        bodyHtml += `
+          <h3 style="margin-top: 16px; margin-bottom: 6px; color: #1b5e20;">${d.fullLabel.toUpperCase()} (${activeRows.length} Atendimentos)</h3>
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 70px; text-align: center;">HORÁRIO</th>
+                <th style="width: 140px;">ESPECIALIDADE</th>
+                <th style="width: 200px;">PROFISSIONAL</th>
+                <th>AGENDA</th>
+                <th style="width: 80px; text-align: center;">SALA</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${activeRows.map((r) => {
+                const bgClass = r.isConflict
+                  ? 'class="row-choque"'
+                  : r.isDupla
+                  ? 'class="row-dupla"'
+                  : r.isGrupo
+                  ? 'class="row-grupo"'
+                  : 'class="row-found"';
+                let agendaCell = r.agendaText;
+                if (r.isConflict) {
+                  agendaCell = `
+                    <div>
+                      <div style="margin-bottom: 3px;"><span class="badge badge-choque">⚡ CHOQUE DE HORÁRIO</span></div>
+                      <div style="font-weight: bold;">${r.agendaText}</div>
+                    </div>
+                  `;
+                } else if (r.patientList && r.patientList.length > 1) {
+                  const badge = r.isDupla ? '<span class="badge badge-dupla">Dupla</span>' : `<span class="badge badge-grupo">Grupo (${r.count})</span>`;
+                  const list = r.patientList.map((p: any) => {
+                    const alertBadge = p.isPromptOrAyres ? '<span class="alert-icon">!</span>' : '';
+                    return `<div>${p.name}${p.time ? ` (${p.time})` : ''} ${alertBadge}</div>`;
+                  }).join('');
+                  agendaCell = `<div><div style="margin-bottom: 2px;">${badge}</div>${list}</div>`;
+                }
+
+                return `
+                  <tr ${bgClass}>
+                    <td style="text-align: center; font-weight: bold;">${r.time}</td>
+                    <td>${r.specialty}</td>
+                    <td>${r.therapistName}</td>
+                    <td>${agendaCell}</td>
+                    <td style="text-align: center;">${r.roomName || '-'}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        `;
+      });
+    }
+
+    printWin.document.write(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>${title}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: Arial, sans-serif; }
+    body { padding: 12mm 15mm; color: #111; font-size: 11px; }
+    .header { border-bottom: 2px solid #1b5e20; padding-bottom: 8px; margin-bottom: 12px; }
+    .header h1 { font-size: 15px; color: #1b5e20; margin-bottom: 4px; }
+    .header p { font-size: 11.5px; margin-bottom: 2px; }
+    .legend { margin-top: 5px; font-size: 10px; color: #444; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+    th, td { border: 1px solid #333; padding: 4px 6px; font-size: 10px; text-align: left; }
+    th { background-color: #1b5e20; color: #fff; font-weight: bold; }
+    .row-found { background-color: #f0fdf4; }
+    .row-choque { background-color: #fee2e2; color: #7f1d1d; font-weight: bold; }
+    .row-dupla { background-color: #fef3c7; }
+    .row-grupo { background-color: #f3e8ff; }
+    .row-notfound { color: #888; font-style: italic; background-color: #fafafa; }
+    .badge { display: inline-block; font-size: 8px; font-weight: bold; padding: 1px 3px; border-radius: 3px; margin-right: 3px; }
+    .badge-choque { background-color: #dc2626; color: #fff; border: 1px solid #991b1b; }
+    .badge-dupla { background-color: #fde68a; color: #78350f; border: 1px solid #d97706; }
+    .badge-grupo { background-color: #e9d5ff; color: #581c87; border: 1px solid #c084fc; }
+    .alert-icon { display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; border-radius: 50%; background-color: #dc2626; color: #fff; font-size: 8.5px; font-weight: bold; margin-left: 2px; }
+    @media print {
+      body { padding: 0; }
+      @page { size: portrait; margin: 8mm; }
+    }
+  </style>
+</head>
+<body>
+  ${bodyHtml}
+</body>
+</html>`);
+
+    printWin.document.close();
+    printWin.focus();
+    setTimeout(() => {
+      printWin.print();
+    }, 250);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-6 backdrop-blur-xs">
+      <div className="flex max-h-[92vh] w-full max-w-5xl flex-col rounded-xl bg-white shadow-2xl overflow-hidden border border-gray-200">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-gray-200 bg-emerald-900 px-6 py-3.5 text-white">
+          <div className="flex items-center gap-2.5">
+            <div className="rounded-lg bg-emerald-800 p-2 text-white">
+              <UserCheck className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold tracking-tight">Grade Completa do Paciente</h2>
+              <p className="text-xs text-emerald-200">
+                Consulta de horários, especialidades e profissionais por dia da semana
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-emerald-200 hover:bg-emerald-800 hover:text-white transition-colors"
+            title="Fechar (Esc)"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Search Bar and Autocomplete */}
+        <div className="border-b border-gray-200 bg-emerald-50/50 p-4">
+          <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
+            <div className="relative w-full sm:max-w-md">
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={patientQuery}
+                  onChange={(e) => {
+                    setPatientQuery(e.target.value);
+                  }}
+                  placeholder="Digite o nome do paciente (ex: JOAQUIM PAULO MOREIRA)..."
+                  className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-8 text-xs font-semibold text-gray-900 shadow-xs focus:border-emerald-600 focus:outline-hidden focus:ring-1 focus:ring-emerald-600"
+                />
+                {patientQuery && (
+                  <button
+                    onClick={() => {
+                      setPatientQuery('');
+                    }}
+                    className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Autocomplete Dropdown */}
+              {patientQuery.trim().length > 1 && filteredPatients.length > 0 && patientQuery !== selectedPatient && (
+                <div className="absolute left-0 right-0 top-full z-40 mt-1 max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                  <div className="p-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2">
+                    Pacientes encontrados ({filteredPatients.length})
+                  </div>
+                  {filteredPatients.map((p) => (
+                    <button
+                      key={p.name}
+                      onClick={() => {
+                        setSelectedPatient(p.name);
+                        setPatientQuery(p.name);
+                      }}
+                      className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium text-gray-800 hover:bg-emerald-50 hover:text-emerald-900 transition-colors"
+                    >
+                      <span className="font-semibold">{p.name}</span>
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                        {p.total} sessões ({p.days.join(', ')})
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Quick stats for selected patient */}
+            {selectedPatient && (
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="font-semibold text-gray-600">Total na semana:</span>
+                <span className="rounded-full bg-emerald-700 px-2.5 py-0.5 font-bold text-white shadow-xs">
+                  {Object.values(patientAppointmentsCountByDay).reduce((a, b) => a + b, 0)} atendimentos
+                </span>
+                <span className="text-gray-400">|</span>
+                <button
+                  onClick={() => setHideNotFound((prev) => !prev)}
+                  className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold border transition-colors ${
+                    hideNotFound
+                      ? 'border-emerald-600 bg-emerald-100 text-emerald-900'
+                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                  }`}
+                  title="Alternar entre ver todos os horários ou apenas horários agendados"
+                >
+                  {hideNotFound ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                  <span>{hideNotFound ? 'Ver Grade Padrão Completa' : 'Ocultar Horários Livres'}</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Days of Week Tab Bar */}
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-emerald-100/60 pt-3">
+            <span className="text-[11px] font-bold text-gray-500 uppercase mr-1">Dia da Semana:</span>
+            {DAYS_OF_WEEK.map((day) => {
+              const count = patientAppointmentsCountByDay[day.key];
+              const isSelected = selectedDay === day.key;
+              const hasReport = !!weeklyReports[day.key];
+
+              return (
+                <button
+                  key={day.key}
+                  onClick={() => setSelectedDay(day.key)}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-bold transition-all ${
+                    isSelected
+                      ? 'bg-emerald-800 text-white shadow-xs'
+                      : 'bg-white text-gray-700 border border-gray-200 hover:border-emerald-400 hover:bg-emerald-50/50'
+                  }`}
+                >
+                  <span>{day.label}</span>
+                  <span
+                    className={`rounded-full px-1.5 py-0.2 text-[10px] font-extrabold ${
+                      isSelected
+                        ? 'bg-emerald-950 text-emerald-200'
+                        : count > 0
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-gray-100 text-gray-400'
+                    }`}
+                  >
+                    {count}
+                  </span>
+                  {!hasReport && (
+                    <span className="text-[9px] text-amber-500 font-normal italic">(vazio)</span>
+                  )}
+                </button>
+              );
+            })}
+
+            <button
+              onClick={() => setSelectedDay('SEMANA')}
+              className={`inline-flex items-center gap-1 rounded-lg px-3 py-1 text-xs font-bold transition-all ml-auto ${
+                selectedDay === 'SEMANA'
+                  ? 'bg-emerald-800 text-white shadow-xs'
+                  : 'bg-white text-gray-700 border border-gray-200 hover:bg-emerald-50/50'
+              }`}
+            >
+              <Calendar className="h-3.5 w-3.5" />
+              <span>Toda a Semana</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Content Table */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-gray-50/40">
+          {!selectedPatient ? (
+            <div className="flex flex-col items-center justify-center p-12 text-center text-gray-400">
+              <Search className="h-10 w-10 text-gray-300 mb-2" />
+              <p className="text-sm font-semibold text-gray-700">Nenhum paciente selecionado</p>
+              <p className="text-xs text-gray-500 mt-1">
+                Digite o nome do paciente no campo acima para visualizar sua grade completa.
+              </p>
+            </div>
+          ) : selectedDay !== 'SEMANA' ? (
+            <div className="space-y-4">
+              {/* Conflict Alert Box (displayed prominently when conflict exists) */}
+              {activeConflicts.length > 0 && (
+                <div className="rounded-xl border-2 border-red-500 bg-red-50 p-4 shadow-sm text-red-950">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-full bg-red-600 text-white shadow-xs shrink-0 mt-0.5">
+                      <Zap className="h-5 w-5 fill-current" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="font-black text-sm text-red-950 tracking-tight">
+                          ALERTA: CHOQUE DE HORÁRIO DETECTADO!
+                        </h4>
+                        <span className="rounded-full bg-red-600 text-white px-2 py-0.5 text-[10px] font-black uppercase tracking-wider animate-pulse">
+                          {activeConflicts.length} {activeConflicts.length === 1 ? 'Conflito' : 'Conflitos'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-red-900 mt-1 font-medium">
+                        O paciente <strong>{selectedPatient}</strong> está agendado simultaneamente para dois ou mais profissionais/salas diferentes no mesmo horário:
+                      </p>
+                      <div className="mt-2.5 space-y-2">
+                        {activeConflicts.map((c, i) => (
+                          <div
+                            key={i}
+                            className="rounded-lg bg-white p-2.5 border border-red-200 shadow-2xs text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="font-black text-red-800 bg-red-100 px-2 py-0.5 rounded text-[11px] shrink-0 border border-red-300">
+                                {c.dayLabel} • {c.slotTime}
+                              </span>
+                              <span className="text-gray-900 font-bold">
+                                {c.details.description}
+                              </span>
+                            </div>
+                            <span className="text-[10px] font-black text-red-700 uppercase tracking-wide shrink-0 bg-red-50 px-2 py-0.5 rounded border border-red-200 self-start sm:self-auto">
+                              Sobreposição de Atendimento
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Patient Banner Box (exact styling requested) */}
+              <div className="rounded-xl border border-emerald-200 bg-white p-4 shadow-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-100 pb-3">
+                  <div>
+                    <div className="text-[11px] font-bold tracking-wider text-emerald-700 uppercase">
+                      Ficha do Paciente
+                    </div>
+                    <div className="text-lg font-extrabold text-gray-900 tracking-tight">
+                      PACIENTE: {selectedPatient}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {activeConflicts.length > 0 && (
+                      <span className="rounded-md bg-red-600 px-2.5 py-1 text-xs font-black text-white shadow-2xs inline-flex items-center gap-1 animate-pulse">
+                        <Zap className="h-3.5 w-3.5 fill-current" />
+                        Choque de Horário
+                      </span>
+                    )}
+                    <span className="rounded-md bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800 border border-emerald-200">
+                      {selectedDay} • {patientAppointmentsCountByDay[selectedDay]} Atendimento(s)
+                    </span>
+                    {displayRows.some((r) => r.isMultiple) && (
+                      <span className="rounded-md bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-900 border border-amber-300 inline-flex items-center gap-1">
+                        <Users className="h-3.5 w-3.5" />
+                        Possui Atendimento Compartilhado
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Patient Table Matching Prompt Exactly */}
+                <div className="mt-3 overflow-x-auto rounded-lg border border-gray-300 bg-white shadow-xs">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-emerald-800 text-white font-bold border-b border-emerald-950">
+                        <th className="py-2.5 px-3 w-24 text-center border-r border-emerald-700">
+                          {selectedDay}
+                        </th>
+                        <th className="py-2.5 px-4 w-48 border-r border-emerald-700">ESPECIALIDADE</th>
+                        <th className="py-2.5 px-4 w-72 border-r border-emerald-700">PROFISSIONAL</th>
+                        <th className="py-2.5 px-4">HORÁRIO</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 font-medium">
+                      {displayRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="py-6 text-center text-gray-500 italic">
+                            Nenhum atendimento agendado para {selectedPatient} na {selectedDay}.
+                          </td>
+                        </tr>
+                      ) : (
+                        displayRows.map((row, idx) => {
+                          const isEven = idx % 2 === 0;
+
+                          // Priority 1: Schedule Conflict (same patient scheduled with 2+ professionals at the same time)
+                          if (row.isConflict) {
+                            return (
+                              <tr
+                                key={row.time}
+                                className="bg-red-50 hover:bg-red-100/90 border-l-4 border-l-red-600 text-red-950 font-bold transition-colors ring-1 ring-inset ring-red-300"
+                              >
+                                <td className="py-2.5 px-3 text-center border-r border-red-200 font-black text-red-700 bg-red-100/70">
+                                  {row.time}
+                                </td>
+                                <td className="py-2.5 px-4 border-r border-red-200 text-red-900 font-bold">
+                                  {row.specialty}
+                                </td>
+                                <td className="py-2.5 px-4 border-r border-red-200 text-red-950 font-bold">
+                                  <div className="flex flex-col gap-1">
+                                    {row.conflictDetails?.bookings ? (
+                                      row.conflictDetails.bookings.map((b: any, bIdx: number) => (
+                                        <div key={bIdx} className="flex items-center gap-1.5 text-xs">
+                                          <span className="font-extrabold text-red-900">{b.therapistName}</span>
+                                          <span className="text-[10px] bg-red-200 text-red-900 px-1 py-0.2 rounded font-black">
+                                            {b.roomName}
+                                          </span>
+                                        </div>
+                                      ))
+                                    ) : (
+                                      <span>{row.therapistName}</span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="py-2.5 px-4">
+                                  <div className="flex flex-col gap-1.5">
+                                    <div className="flex items-center gap-2">
+                                      <span className="inline-flex items-center gap-1 rounded bg-red-600 text-white px-2 py-0.5 text-[10px] font-black shrink-0 border border-red-700 shadow-2xs animate-pulse">
+                                        <Zap className="h-3 w-3 fill-current" />
+                                        CHOQUE DE HORÁRIO
+                                      </span>
+                                      <span className="text-[11px] font-bold text-red-800">
+                                        {row.conflictDetails?.therapistCount || 2} profissionais no mesmo horário
+                                      </span>
+                                    </div>
+                                    <div className="space-y-1">
+                                      {row.conflictDetails?.bookings?.map((b: any, bIdx: number) => (
+                                        <div
+                                          key={bIdx}
+                                          className="flex items-center justify-between rounded bg-white/90 px-2 py-1 border border-red-200 shadow-2xs text-[11px]"
+                                        >
+                                          <div className="flex items-center gap-1.5 truncate">
+                                            <span className="font-black text-red-900">{b.roomName}:</span>
+                                            <span className="font-bold text-gray-800">{b.therapistName}</span>
+                                            {b.specialty && <span className="text-gray-500 font-normal">({b.specialty})</span>}
+                                          </div>
+                                          <span className="font-black text-red-700 bg-red-100 px-1.5 py-0.5 rounded text-[10px] shrink-0">
+                                            {b.time}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          }
+
+                          // Distinctive row highlighting when multiple patients exist at this slot
+                          if (row.isMultiple) {
+                            const isDupla = row.isDupla;
+                            const isGrupo = row.isGrupo;
+
+                            const rowBg = isDupla
+                              ? 'bg-amber-100 hover:bg-amber-150 border-l-4 border-l-amber-500 text-amber-950 font-bold'
+                              : 'bg-purple-100 hover:bg-purple-150 border-l-4 border-l-purple-500 text-purple-950 font-bold';
+
+                            const borderCell = isDupla ? 'border-amber-200' : 'border-purple-200';
+
+                            return (
+                              <tr
+                                key={row.time}
+                                className={`transition-colors ${rowBg}`}
+                              >
+                                <td className={`py-2 px-3 text-center border-r ${borderCell}`}>
+                                  {row.time}
+                                </td>
+                                <td className={`py-2 px-4 border-r ${borderCell} ${isDupla ? 'text-amber-900' : 'text-purple-900'}`}>
+                                  {row.specialty}
+                                </td>
+                                <td className={`py-2 px-4 border-r ${borderCell}`}>
+                                  {row.therapistName}
+                                </td>
+                                <td className="py-2 px-4">
+                                  <div className="flex flex-col gap-1">
+                                    <div className="flex items-center gap-2">
+                                      {isDupla && (
+                                        <span className="inline-flex items-center gap-1 rounded bg-amber-200 text-amber-950 px-2 py-0.5 text-[10px] font-black shrink-0 border border-amber-400 shadow-2xs">
+                                          <Users className="h-3 w-3" />
+                                          Dupla
+                                        </span>
+                                      )}
+                                      {isGrupo && (
+                                        <span className="inline-flex items-center gap-1 rounded bg-purple-200 text-purple-950 px-2 py-0.5 text-[10px] font-black shrink-0 border border-purple-400 shadow-2xs">
+                                          <Users className="h-3 w-3" />
+                                          Grupo ({row.count})
+                                        </span>
+                                      )}
+                                      {row.hasClinicalAlert && (
+                                        <span className="inline-flex items-center gap-1 rounded bg-red-100 text-red-700 px-1.5 py-0.5 text-[9px] font-bold border border-red-300">
+                                          <span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-600 text-white text-[9px] font-black">!</span>
+                                          Fono Prompt / TO Ayres
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="space-y-0.5 mt-0.5">
+                                      {row.patientList && row.patientList.length > 0 ? (
+                                        row.patientList.map((p: any, pIdx: number) => (
+                                          <div key={pIdx} className="flex items-center gap-1.5 text-xs">
+                                            <span className={p.name.toUpperCase().includes(selectedPatient.toUpperCase()) ? 'underline font-black' : 'font-medium'}>
+                                              {p.name}{p.time ? ` (${p.time})` : ''}
+                                            </span>
+                                            {p.isPromptOrAyres && (
+                                              <span
+                                                className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-white text-[10px] font-black shadow-xs ring-1 ring-red-300"
+                                                title="Alerta clínico: Paciente em Fono Prompt ou TO Ayres em atendimento compartilhado"
+                                              >
+                                                !
+                                              </span>
+                                            )}
+                                          </div>
+                                        ))
+                                      ) : (
+                                        <span>{row.agendaText}</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          }
+
+                          if (row.found) {
+                            return (
+                              <tr
+                                key={row.time}
+                                className="bg-emerald-50/70 hover:bg-emerald-100/60 transition-colors text-gray-900"
+                              >
+                                <td className="py-2 px-3 text-center border-r border-gray-200 font-bold text-emerald-950">
+                                  {row.time}
+                                </td>
+                                <td className="py-2 px-4 border-r border-gray-200 font-semibold text-emerald-900">
+                                  {row.specialty}
+                                </td>
+                                <td className="py-2 px-4 border-r border-gray-200 font-bold text-gray-900">
+                                  {row.therapistName}
+                                </td>
+                                <td className="py-2 px-4 font-bold text-gray-900">
+                                  {row.agendaText}
+                                </td>
+                              </tr>
+                            );
+                          }
+
+                          // Not found row
+                          return (
+                            <tr
+                              key={row.time}
+                              className={isEven ? 'bg-white hover:bg-gray-50/70' : 'bg-gray-50/40 hover:bg-gray-100/50'}
+                            >
+                              <td className="py-2 px-3 text-center border-r border-gray-200 font-bold text-gray-500">
+                                {row.time}
+                              </td>
+                              <td className="py-2 px-4 border-r border-gray-200 text-gray-400">
+                                NÃO ENCONTRADO
+                              </td>
+                              <td className="py-2 px-4 border-r border-gray-200 text-gray-400">
+                                NÃO ENCONTRADO
+                              </td>
+                              <td className="py-2 px-4 text-gray-400">
+                                NÃO ENCONTRADO
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : (
+            // All week view
+            <div className="space-y-6">
+              {/* Conflict Alert Box for Full Week */}
+              {activeConflicts.length > 0 && (
+                <div className="rounded-xl border-2 border-red-500 bg-red-50 p-4 shadow-sm text-red-950">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-full bg-red-600 text-white shadow-xs shrink-0 mt-0.5">
+                      <Zap className="h-5 w-5 fill-current" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="font-black text-sm text-red-950 tracking-tight">
+                          ALERTA: CHOQUE DE HORÁRIO DETECTADO NA GRADE SEMANAL!
+                        </h4>
+                        <span className="rounded-full bg-red-600 text-white px-2 py-0.5 text-[10px] font-black uppercase tracking-wider animate-pulse">
+                          {activeConflicts.length} {activeConflicts.length === 1 ? 'Conflito' : 'Conflitos'} na Semana
+                        </span>
+                      </div>
+                      <p className="text-xs text-red-900 mt-1 font-medium">
+                        O paciente <strong>{selectedPatient}</strong> possui horários em choque (dois profissionais agendados ao mesmo tempo):
+                      </p>
+                      <div className="mt-2.5 space-y-2">
+                        {activeConflicts.map((c, i) => (
+                          <div
+                            key={i}
+                            className="rounded-lg bg-white p-2.5 border border-red-200 shadow-2xs text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="font-black text-red-800 bg-red-100 px-2 py-0.5 rounded text-[11px] shrink-0 border border-red-300">
+                                {c.dayLabel} • {c.slotTime}
+                              </span>
+                              <span className="text-gray-900 font-bold">
+                                {c.details.description}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => setSelectedDay(c.day)}
+                              className="text-[10px] font-black text-red-700 uppercase tracking-wide shrink-0 bg-red-50 hover:bg-red-100 px-2 py-0.5 rounded border border-red-200 underline cursor-pointer self-start sm:self-auto"
+                            >
+                              Ver {c.dayLabel} →
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="rounded-xl border border-emerald-200 bg-white p-4 shadow-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-200 pb-3">
+                  <div>
+                    <div className="text-[11px] font-bold tracking-wider text-emerald-700 uppercase">
+                      Consolidado Semanal
+                    </div>
+                    <div className="text-lg font-extrabold text-gray-900">
+                      PACIENTE: {selectedPatient} - SEGUNDA A SÁBADO
+                    </div>
+                  </div>
+                  {activeConflicts.length > 0 && (
+                    <span className="rounded-md bg-red-600 px-2.5 py-1 text-xs font-black text-white shadow-2xs inline-flex items-center gap-1 animate-pulse">
+                      <Zap className="h-3.5 w-3.5 fill-current" />
+                      {activeConflicts.length} Choque{activeConflicts.length > 1 ? 's' : ''} nesta semana
+                    </span>
+                  )}
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {DAYS_OF_WEEK.map((d) => {
+                    const daySchedule = getDaySchedule(d.key, selectedPatient);
+                    const activeOnly = daySchedule.filter((s) => s.found);
+                    const dayHasConflict = activeOnly.some((s) => s.isConflict);
+
+                    return (
+                      <div
+                        key={d.key}
+                        className={`rounded-lg border bg-white overflow-hidden shadow-2xs transition-colors ${
+                          dayHasConflict
+                            ? 'border-red-400 ring-1 ring-red-400'
+                            : 'border-gray-200 hover:border-emerald-400'
+                        }`}
+                      >
+                        <div
+                          className={`px-3 py-2 text-white flex items-center justify-between ${
+                            dayHasConflict ? 'bg-red-800' : 'bg-emerald-800'
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-xs">{d.fullLabel}</span>
+                            {dayHasConflict && (
+                              <span className="rounded bg-red-600 px-1.5 py-0.2 text-[9px] font-black uppercase text-white shadow-2xs">
+                                ⚡ Choque
+                              </span>
+                            )}
+                          </div>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
+                              dayHasConflict ? 'bg-red-950 text-red-200' : 'bg-emerald-950 text-emerald-200'
+                            }`}
+                          >
+                            {activeOnly.length} sessões
+                          </span>
+                        </div>
+
+                        <div className="p-2 divide-y divide-gray-100 max-h-64 overflow-y-auto text-xs">
+                          {activeOnly.length === 0 ? (
+                            <div className="py-4 text-center text-gray-400 italic">
+                              Sem atendimentos neste dia
+                            </div>
+                          ) : (
+                            activeOnly.map((a) => {
+                              if (a.isConflict) {
+                                return (
+                                  <div
+                                    key={a.time}
+                                    className="py-2 px-2 rounded bg-red-100 text-red-950 font-bold border border-red-300 shadow-2xs flex flex-col gap-1 my-1"
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-black text-red-700 bg-red-200 px-1.5 py-0.2 rounded text-[11px]">
+                                        {a.time}
+                                      </span>
+                                      <span className="inline-flex items-center gap-1 rounded bg-red-600 text-white px-1.5 py-0.2 text-[9px] font-black uppercase">
+                                        <Zap className="h-2.5 w-2.5 fill-current" />
+                                        Choque
+                                      </span>
+                                    </div>
+                                    <div className="text-[11px] text-red-900 font-extrabold leading-tight">
+                                      {a.agendaText}
+                                    </div>
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <div
+                                  key={a.time}
+                                  className={`py-1.5 px-2 rounded flex flex-col gap-0.5 ${
+                                    a.isMultiple ? 'bg-amber-100 font-bold text-amber-950' : 'hover:bg-gray-50'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-bold text-emerald-900">{a.time}</span>
+                                    <span className="text-[10px] font-bold text-gray-500 uppercase">{a.specialty}</span>
+                                  </div>
+                                  <div className="text-[11px] text-gray-800 truncate">{a.therapistName}</div>
+                                  {a.isMultiple && (
+                                    <div className="text-[10px] text-amber-800 font-extrabold flex items-center gap-1">
+                                      <Users className="h-3 w-3" />
+                                      <span>Compartilhado: {a.agendaText}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer Actions */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 bg-white px-6 py-3">
+          <div className="text-xs text-gray-500 flex items-center gap-1.5">
+            <AlertCircle className="h-4 w-4 text-emerald-700 shrink-0" />
+            <span>
+              Tabela formatada pronta para exportação e cópia direta no padrão do relatório Promédica.
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleCopyTable}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold shadow-xs transition-colors ${
+                copied
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-emerald-800 text-white hover:bg-emerald-900'
+              }`}
+              title="Copiar texto tabulado para colar direto no Excel ou WhatsApp"
+            >
+              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              <span>{copied ? 'Tabela Copiada!' : 'Copiar Tabela'}</span>
+            </button>
+
+            <button
+              onClick={handleExportExcel}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3.5 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50 shadow-xs"
+              title="Baixar arquivo Excel (.xlsx) da grade deste paciente"
+            >
+              <FileSpreadsheet className="h-4 w-4 text-emerald-700" />
+              <span>Exportar Excel</span>
+            </button>
+
+            <button
+              onClick={handlePrintPatient}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50 shadow-xs"
+              title="Imprimir grade do paciente formatada para folha A4"
+            >
+              <Printer className="h-4 w-4 text-gray-600" />
+              <span>Imprimir Ficha</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};

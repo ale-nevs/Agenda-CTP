@@ -1,0 +1,6 @@
+{
+  "name": "Gerador de Planilha de Horários e Salas",
+  "description": "Sistema para leitura de relatórios de agendamento (Oracle Reports / PS120108) e geração automática da planilha de salas, terapeutas e horários de atendimento.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

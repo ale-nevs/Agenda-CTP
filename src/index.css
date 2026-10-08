@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+@media print {
+  @page {
+    size: landscape;
+    margin: 4mm 5mm 4mm 5mm;
+  }
+  
+  html, body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    font-size: 8.5px !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide UI elements on paper */
+  header,
+  nav,
+  button,
+  input,
+  .print\:hidden,
+  [data-no-print="true"] {
+    display: none !important;
+  }
+
+  /* Ensure print container expands without scrollbars */
+  main {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .overflow-x-auto {
+    overflow: visible !important;
+  }
+
+  /* Table layout for print */
+  table {
+    width: 100% !important;
+    table-layout: auto !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+    page-break-after: auto;
+  }
+
+  th, td {
+    border: 1px solid #000000 !important;
+    padding: 1.5px 2.5px !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    word-break: break-word;
+  }
+
+  /* High contrast badge and alert styling in print */
+  .bg-amber-100 {
+    background-color: #fef3c7 !important;
+  }
+  .bg-purple-100 {
+    background-color: #f3e8ff !important;
+  }
+  .bg-red-600 {
+    background-color: #dc2626 !important;
+    color: #ffffff !important;
+  }
+  .bg-amber-200 {
+    background-color: #fde68a !important;
+  }
+  .bg-purple-200 {
+    background-color: #e9d5ff !important;
+  }
+}
+
