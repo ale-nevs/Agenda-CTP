@@ -94,13 +94,18 @@ export const PatientCellDisplay: React.FC<PatientCellDisplayProps> = ({
       </div>
 
       {/* Patient rows with individual icons */}
-      <div className="space-y-0.5">
+      <div className="flex flex-col">
         {analysis.patients.map((p: ParsedPatientItem, idx: number) => {
           const norm = normalizePatientName(p.name);
           const otherConflict = conflictingPatients[norm];
 
           return (
-            <div key={`${p.name}-${idx}`} className="flex items-center justify-between gap-1 text-[10px] leading-tight">
+            <div
+              key={`${p.name}-${idx}`}
+              className={`flex items-center justify-between gap-1 text-[10px] leading-tight ${
+                idx > 0 ? 'mt-1 border-t border-dashed border-black/15 pt-1' : ''
+              }`}
+            >
               <span className="whitespace-normal break-words font-bold text-gray-900">
                 {p.name}
                 {p.exactTime ? ` (${p.exactTime})` : ''}

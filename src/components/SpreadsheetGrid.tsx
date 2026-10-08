@@ -25,7 +25,7 @@ interface SpreadsheetGridProps {
 type Period = 'morning' | 'midday' | 'afternoon';
 
 const TIME_COL_WIDTH = 68;
-const ROOM_COL_WIDTH = 165;
+const ROOM_COL_WIDTH = 210;
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 1.6;
 const ZOOM_STEP = 0.1;
@@ -210,7 +210,11 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
           <th
             key={`${keyPrefix}-${therapist.id}`}
             className={`border border-slate-200 py-1.5 px-1.5 text-center font-bold ${rowClass}`}
-            style={{ width: ROOM_COL_WIDTH, minWidth: ROOM_COL_WIDTH, maxWidth: ROOM_COL_WIDTH }}
+            style={{
+              width: ROOM_COL_WIDTH,
+              minWidth: ROOM_COL_WIDTH,
+              maxWidth: ROOM_COL_WIDTH,
+            }}
           >
             {isEditing ? (
               <div className="flex items-center justify-center gap-1">
@@ -476,7 +480,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
           <thead className="sticky top-0 z-20">
             {headerRow('roomName', 'SALA', 'bg-brand-700 text-white tracking-wider', true, 'sala', stickyHeadCell)}
             {headerRow('name', 'TERAPEUTA', 'bg-brand-100 text-brand-900', true, 'name', stickyHeadCell)}
-            {headerRow('specialty', 'HORÁRIO', 'bg-brand-50 text-brand-600', true, 'spec', stickyHeadCell)}
+            {headerRow('specialty', 'HORÁRIO', 'bg-accent-50 text-accent-800', true, 'spec', stickyHeadCell)}
           </thead>
 
           <tbody>
@@ -493,7 +497,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
 
             {/* Cabeçalhos repetidos para o turno da tarde */}
             {headerRow('name', 'TERAPEUTA', 'bg-brand-100 text-brand-900', false, 'pm-name', stickyTimeCell)}
-            {headerRow('specialty', 'HORÁRIO', 'bg-brand-50 text-brand-600', false, 'pm-spec', stickyTimeCell)}
+            {headerRow('specialty', 'HORÁRIO', 'bg-accent-50 text-accent-800', false, 'pm-spec', stickyTimeCell)}
 
             {timeRows(afternoonTimes, 'afternoon')}
             {addTimeRow('afternoon', 'Hora', 'Inserir horário personalizado de tarde', 'Pressione Enter para adicionar horário de tarde')}

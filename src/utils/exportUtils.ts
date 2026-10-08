@@ -271,7 +271,7 @@ const DOCUMENT_CSS = `
   thead th { text-align: center; font-weight: 800; }
   tr.h-sala th { background: ${BRAND.primary}; color: #fff; letter-spacing: .3px; }
   tr.h-terapeuta th { background: ${BRAND.primaryLight}; color: ${BRAND.primaryDarker}; }
-  tr.h-especialidade th { background: ${BRAND.primarySoft}; color: ${BRAND.accent}; }
+  tr.h-especialidade th { background: ${BRAND.secondaryLight}; color: ${BRAND.secondaryText}; }
   th.corner { font-size: .72em; letter-spacing: -.2px; padding: 2px 1px; }
   tbody td.time { text-align: center; font-weight: 800; background: ${BRAND.primarySoft}; color: ${BRAND.primaryDarker}; }
   tbody tr { page-break-inside: avoid; break-inside: avoid; }
@@ -283,7 +283,7 @@ const DOCUMENT_CSS = `
   td.c-grupo { background: ${BRAND.grupoBg}; }
   td.c-choque { background: ${BRAND.choqueBg}; outline: 2px solid ${BRAND.choque}; outline-offset: -2px; }
   .p { font-weight: 600; line-height: 1.2; }
-  .p + .p { margin-top: 1px; }
+  .p + .p { margin-top: 2px; padding-top: 2px; border-top: 1px dashed rgba(0, 0, 0, .18); }
   .p-choque { color: ${BRAND.choqueDark}; font-weight: 800; }
   .t { font-weight: 500; color: ${BRAND.muted}; }
   .cw { font-size: .82em; font-weight: 700; color: ${BRAND.choque}; line-height: 1.15; }
@@ -336,7 +336,9 @@ function buildPagesHtml(model: ScheduleModel, logoDataUrl: string | null): { htm
       const header = `
         <thead>
           <tr class="h-sala"><th class="corner">SALA</th>${rooms.map((t) => `<th>${escapeHtml(t.roomName)}</th>`).join('')}</tr>
-          <tr class="h-terapeuta"><th class="corner">TERAPEUTA</th>${rooms.map((t) => `<th>${escapeHtml(t.name)}</th>`).join('')}</tr>
+          <tr class="h-terapeuta"><th class="corner">TERAPEUTA</th>${rooms
+            .map((t) => `<th>${escapeHtml(t.name)}</th>`)
+            .join('')}</tr>
           <tr class="h-especialidade"><th class="corner">HORÁRIO</th>${rooms
             .map((t) => `<th>${escapeHtml(t.specialty || 'ESPECIALIDADE')}</th>`)
             .join('')}</tr>
@@ -538,7 +540,7 @@ function cellText(c: CellModel): string {
   if (tags.length) lines.push(`[${tags.join(' · ')}]`);
   const multiple = c.count > 1;
   c.patients.forEach((p) => {
-    let line = p.name;
+    let line = multiple ? `• ${p.name}` : p.name;
     if (multiple && p.exactTime) line += ` (${p.exactTime})`;
     if (p.isPromptOrAyres && multiple) line += ' (!)';
     if (p.conflictWith) line += ' ⚡';
@@ -573,7 +575,7 @@ export async function exportExcel(data: ExportTableData) {
     },
   });
 
-  ws.columns = [{ width: 9 }, ...rooms.map(() => ({ width: 28 }))];
+  ws.columns = [{ width: 9 }, ...rooms.map(() => ({ width: 34 }))];
 
   const font = 'Arial';
   const thin = { style: 'thin' as const, color: { argb: 'FF6B7A90' } };
@@ -639,7 +641,7 @@ export async function exportExcel(data: ExportTableData) {
     addShiftTitle(`${shift.label.toUpperCase()} · ${shift.rangeLabel}`);
     addHeaderRow('SALA', roomNames, BRAND.primary, '#FFFFFF');
     addHeaderRow('TERAPEUTA', therapistNames, BRAND.primaryLight, BRAND.primaryDarker, 9);
-    addHeaderRow('HORÁRIO', specialties, BRAND.primarySoft, BRAND.accent, 9);
+    addHeaderRow('HORÁRIO', specialties, BRAND.secondaryLight, BRAND.secondaryText, 9);
 
     const shiftStartRow = rowIdx;
     const emptyIds = emptyShiftRoomIds(model, shift, rooms);
@@ -694,7 +696,7 @@ export async function exportExcel(data: ExportTableData) {
             .map((p) => `CHOQUE: ${p.name} também em ${p.conflictWith}`);
           if (notes.length) cell.note = notes.join('\n');
         }
-        const lines = text ? text.split('\n').reduce((acc, l) => acc + Math.max(1, Math.ceil(l.length / 30)), 0) : 1;
+        const lines = text ? text.split('\n').reduce((acc, l) => acc + Math.max(1, Math.ceil(l.length / 36)), 0) : 1;
         maxLines = Math.max(maxLines, lines);
       });
       row.height = Math.max(18, maxLines * 12 + 4);

@@ -335,17 +335,17 @@ export default function App() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="inline-flex items-center gap-1.5 rounded-lg bg-neutral-100 px-2.5 py-1.5 font-semibold text-neutral-900">
+            <span className="inline-flex items-center gap-1.5 rounded-lg bg-brand-50 px-2.5 py-1.5 font-semibold text-brand-950">
               <Calendar className="h-3.5 w-3.5" />
               {report.dayOfWeek}
               {report.date ? ` · ${report.date}` : ''}
             </span>
             {hasDayData && (
               <>
-                <span className="rounded-lg bg-white px-2.5 py-1.5 font-semibold text-slate-700 ring-1 ring-slate-200">
+                <span className="rounded-lg bg-slate-100 px-2.5 py-1.5 font-semibold text-slate-700 ring-1 ring-slate-200">
                   {activeTherapists.length} salas
                 </span>
-                <span className="rounded-lg bg-white px-2.5 py-1.5 font-semibold text-slate-700 ring-1 ring-slate-200">
+                <span className="rounded-lg bg-accent-50 px-2.5 py-1.5 font-semibold text-accent-700 ring-1 ring-accent-200">
                   {totalAppointmentsCount} consultas
                 </span>
                 <span

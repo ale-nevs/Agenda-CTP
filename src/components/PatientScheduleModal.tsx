@@ -22,6 +22,7 @@ import { ParsedReport, DayOfWeekKey, DAYS_OF_WEEK } from '../types';
 import { getIntervalSlot, normalizePatientName, normalizeTherapistName } from '../utils/conflictUtils';
 import { APP_FULL_NAME, BRAND, FONT_FAMILY, logoImgHtml } from '../brand';
 import { triggerDownload } from '../utils/exportUtils';
+import { therapyColor } from '../utils/therapyColors';
 
 /** Duração considerada para cada sessão (grade padrão de 30 minutos). */
 const SESSION_MINUTES = 30;
@@ -148,22 +149,6 @@ function computeTherapySummary(
       return { specialty, sessions, minutes: sessions * SESSION_MINUTES, professionals, breakdown };
     })
     .sort((x, y) => y.sessions - x.sessions || x.specialty.localeCompare(y.specialty));
-}
-
-/** Cor suave de cada terapia na visão Quantidade / Profissionais. */
-const THERAPY_COLORS: Array<[RegExp, string]> = [
-  [/FONO/, '#38bdf8'],
-  [/OCUPACIONAL/, '#2dd4bf'],
-  [/PSICOTERAPIA/, '#818cf8'],
-  [/PSICOPEDAGOGIA/, '#f472b6'],
-  [/PSICOMOTRIC/, '#84cc16'],
-  [/MUSICO/, '#fb923c'],
-  [/ATENDIMENTO/, '#22d3ee'],
-];
-const FALLBACK_THERAPY_COLORS = ['#94a3b8', '#a3a3a3', '#c4b5fd', '#fda4af'];
-export function therapyColor(specialty: string, index = 0): string {
-  const match = THERAPY_COLORS.find(([re]) => re.test(specialty.toUpperCase()));
-  return match ? match[1] : FALLBACK_THERAPY_COLORS[index % FALLBACK_THERAPY_COLORS.length];
 }
 
 const dayShortLabel = (key: DayOfWeekKey) => DAYS_OF_WEEK.find((d) => d.key === key)?.label || key;
@@ -1026,21 +1011,21 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-6 backdrop-blur-xs">
       <div className="flex max-h-[92vh] w-full max-w-5xl flex-col rounded-xl bg-white shadow-2xl overflow-hidden border border-gray-200">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 bg-neutral-800 px-6 py-3.5 text-white">
+        <div className="flex items-center justify-between border-b border-gray-200 bg-brand-800 px-6 py-3.5 text-white">
           <div className="flex items-center gap-2.5">
             <div className="rounded-lg bg-brand-700 p-2 text-white">
               <UserCheck className="h-5 w-5" />
             </div>
             <div>
               <h2 className="text-base font-bold tracking-tight">Grade Completa do Paciente</h2>
-              <p className="text-xs text-neutral-300">
+              <p className="text-xs text-brand-200">
                 Consulta de horários, especialidades e profissionais por dia da semana
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-neutral-300 hover:bg-brand-800 hover:text-white transition-colors"
+            className="rounded-lg p-1.5 text-brand-200 hover:bg-brand-800 hover:text-white transition-colors"
             title="Fechar (Esc)"
           >
             <X className="h-5 w-5" />
@@ -1048,7 +1033,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
         </div>
 
         {/* Search Bar and Autocomplete */}
-        <div className="border-b border-gray-200 bg-neutral-100/50 p-4">
+        <div className="border-b border-gray-200 bg-brand-50/50 p-4">
           <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
             <div className="relative w-full sm:max-w-md">
               <div className="relative">
@@ -1087,10 +1072,10 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                         setSelectedPatient(p.name);
                         setPatientQuery(p.name);
                       }}
-                      className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium text-gray-800 hover:bg-neutral-100 hover:text-neutral-900 transition-colors"
+                      className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium text-gray-800 hover:bg-brand-50 hover:text-brand-950 transition-colors"
                     >
                       <span className="font-semibold">{p.name}</span>
-                      <span className="rounded-full bg-neutral-200 px-2 py-0.5 text-[10px] font-bold text-brand-800">
+                      <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-bold text-brand-800">
                         {p.total} sessões ({p.days.join(', ')})
                       </span>
                     </button>
@@ -1103,7 +1088,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
             {selectedPatient && (
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <span className="font-semibold text-gray-600">Total na semana:</span>
-                <span className="rounded-full bg-brand-700 px-2.5 py-0.5 font-bold text-white shadow-xs">
+                <span className="rounded-full bg-accent-600 px-2.5 py-0.5 font-bold text-white shadow-xs">
                   {Object.values(patientAppointmentsCountByDay).reduce((a, b) => a + b, 0)} atendimentos
                 </span>
                 <span className="text-gray-400">|</span>
@@ -1111,7 +1096,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                   onClick={() => setHideNotFound((prev) => !prev)}
                   className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold border transition-colors ${
                     hideNotFound
-                      ? 'border-brand-600 bg-neutral-200 text-neutral-900'
+                      ? 'border-brand-600 bg-brand-100 text-brand-950'
                       : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
                   }`}
                   title="Alternar entre ver todos os horários ou apenas horários agendados"
@@ -1124,7 +1109,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
           </div>
 
           {/* Days of Week Tab Bar */}
-          <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-neutral-200 pt-3">
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-brand-100 pt-3">
             <span className="text-[11px] font-bold text-gray-500 uppercase mr-1">Dia da Semana:</span>
             {DAYS_OF_WEEK.map((day) => {
               const count = patientAppointmentsCountByDay[day.key];
@@ -1138,16 +1123,16 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                   className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-bold transition-all ${
                     isSelected
                       ? 'bg-brand-700 text-white shadow-xs'
-                      : 'bg-white text-gray-700 border border-gray-200 hover:border-brand-400 hover:bg-neutral-100'
+                      : 'bg-brand-50 text-brand-800 border border-brand-200 hover:bg-brand-100'
                   }`}
                 >
                   <span>{day.label}</span>
                   <span
-                    className={`rounded-full px-1.5 py-0.2 text-[10px] font-extrabold ${
+                    className={`min-w-[20px] rounded-full px-1.5 py-0.5 text-center text-[10px] font-extrabold ${
                       isSelected
-                        ? 'bg-white/20 text-white'
+                        ? 'bg-white text-brand-800'
                         : count > 0
-                        ? 'bg-neutral-200 text-brand-800'
+                        ? 'bg-accent-600 text-white'
                         : 'bg-gray-100 text-gray-400'
                     }`}
                   >
@@ -1165,7 +1150,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
               className={`inline-flex items-center gap-1 rounded-lg px-3 py-1 text-xs font-bold transition-all ml-auto ${
                 selectedDay === 'SEMANA'
                   ? 'bg-brand-700 text-white shadow-xs'
-                  : 'bg-white text-gray-700 border border-gray-200 hover:bg-neutral-100'
+                  : 'bg-brand-50 text-brand-800 border border-brand-200 hover:bg-brand-100'
               }`}
             >
               <Calendar className="h-3.5 w-3.5" />
@@ -1180,7 +1165,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
               <button
                 onClick={() => setViewMode('grade')}
                 className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
-                  viewMode === 'grade' ? 'bg-brand-700 text-white' : 'text-gray-600 hover:bg-gray-50'
+                  viewMode === 'grade' ? 'bg-brand-700 text-white' : 'bg-brand-50 text-brand-800 hover:bg-brand-100'
                 }`}
               >
                 <CalendarRange className="h-3.5 w-3.5" />
@@ -1189,7 +1174,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
               <button
                 onClick={() => setViewMode('resumo')}
                 className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
-                  viewMode === 'resumo' ? 'bg-brand-700 text-white' : 'text-gray-600 hover:bg-gray-50'
+                  viewMode === 'resumo' ? 'bg-brand-700 text-white' : 'bg-brand-50 text-brand-800 hover:bg-brand-100'
                 }`}
                 title="Quantas horas de cada terapia e quais profissionais atendem cada especialidade"
               >
@@ -1212,13 +1197,13 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
             </div>
           ) : viewMode === 'resumo' ? (
             <div className="space-y-4">
-              <div className="rounded-xl border border-neutral-300 bg-white p-4 shadow-xs">
-                <div className="flex flex-col gap-1 border-b border-neutral-200 pb-3 sm:flex-row sm:items-end sm:justify-between">
+              <div className="rounded-xl border border-brand-200 bg-white p-4 shadow-xs">
+                <div className="flex flex-col gap-1 border-b border-brand-100 pb-3 sm:flex-row sm:items-end sm:justify-between">
                   <div>
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-brand-700">Quantidade / Profissionais</div>
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-accent-600">Quantidade / Profissionais</div>
                     <div className="text-lg font-extrabold tracking-tight text-gray-900">PACIENTE: {selectedPatient}</div>
                   </div>
-                  <span className="self-start rounded-md border border-neutral-300 bg-neutral-100 px-2.5 py-1 text-xs font-bold text-brand-800 sm:self-auto">
+                  <span className="self-start rounded-md border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-bold text-brand-800 sm:self-auto">
                     {scopeLabel}
                   </span>
                 </div>
@@ -1233,10 +1218,10 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                   ].map((kpi) => (
                     <div key={kpi.label} className="rounded-lg border border-gray-200 bg-gray-50/60 px-3 py-2">
                       <div className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500">
-                        <span className="text-brand-600">{kpi.icon}</span>
+                        <span className="text-accent-600">{kpi.icon}</span>
                         {kpi.label}
                       </div>
-                      <div className="mt-0.5 text-xl font-extrabold text-neutral-900">{kpi.value}</div>
+                      <div className="mt-0.5 text-xl font-extrabold text-brand-950">{kpi.value}</div>
                     </div>
                   ))}
                 </div>
@@ -1267,7 +1252,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                               style={{ boxShadow: `inset 4px 0 0 ${color}` }}
                             >
                               <td className="px-3 py-2.5 pl-4">
-                                <div className="flex items-center gap-1.5 font-bold text-neutral-900">
+                                <div className="flex items-center gap-1.5 font-bold text-brand-950">
                                   <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
                                   {t.specialty}
                                 </div>
@@ -1285,7 +1270,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                                   {t.professionals.map((p) => (
                                     <div key={p.name} className="flex flex-wrap items-center gap-1.5">
                                       <span className="font-bold text-gray-900">{p.name}</span>
-                                      <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-bold text-brand-800">
+                                      <span className="rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-bold text-brand-800">
                                         {p.sessions} sessão(ões) · {formatMinutes(p.minutes)}
                                       </span>
                                       <span className="text-[10px] font-medium text-gray-500">{p.days.map(dayShortLabel).join(', ')}</span>
@@ -1296,7 +1281,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                             </tr>
                           );
                         })}
-                        <tr className="bg-neutral-100 font-extrabold text-neutral-900">
+                        <tr className="bg-brand-50 font-extrabold text-brand-950">
                           <td className="px-3 py-2.5">TOTAL</td>
                           <td className="px-3 py-2.5 text-center">{summaryTotals.sessions}</td>
                           <td className="px-3 py-2.5 text-center">{formatMinutes(summaryTotals.minutes)}</td>
@@ -1360,10 +1345,10 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
               )}
 
               {/* Patient Banner Box (exact styling requested) */}
-              <div className="rounded-xl border border-neutral-300 bg-white p-4 shadow-xs">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-200 pb-3">
+              <div className="rounded-xl border border-brand-200 bg-white p-4 shadow-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-brand-100 pb-3">
                   <div>
-                    <div className="text-[11px] font-bold tracking-wider text-brand-700 uppercase">
+                    <div className="text-[11px] font-bold tracking-wider text-accent-600 uppercase">
                       Ficha do Paciente
                     </div>
                     <div className="text-lg font-extrabold text-gray-900 tracking-tight">
@@ -1377,7 +1362,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                         Choque de Horário
                       </span>
                     )}
-                    <span className="rounded-md bg-neutral-200 px-2.5 py-1 text-xs font-bold text-brand-800 border border-neutral-300">
+                    <span className="rounded-md bg-brand-100 px-2.5 py-1 text-xs font-bold text-brand-800 border border-brand-200">
                       {selectedDay} • {patientAppointmentsCountByDay[selectedDay]} Atendimento(s)
                     </span>
                     {displayRows.some((r) => r.isMultiple) && (
@@ -1393,7 +1378,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                 <div className="mt-3 overflow-x-auto rounded-lg border border-gray-300 bg-white shadow-xs">
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
-                      <tr className="bg-brand-700 text-white font-bold border-b border-neutral-900">
+                      <tr className="bg-brand-700 text-white font-bold border-b border-brand-900">
                         <th className="py-2.5 px-3 w-24 text-center border-r border-brand-700">
                           {selectedDay}
                         </th>
@@ -1555,10 +1540,10 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                                 key={row.time}
                                 className="bg-emerald-50 hover:bg-emerald-100/70 border-l-4 border-l-emerald-300 transition-colors text-gray-900"
                               >
-                                <td className="py-2 px-3 text-center border-r border-gray-200 font-bold text-neutral-900">
+                                <td className="py-2 px-3 text-center border-r border-gray-200 font-bold text-brand-950">
                                   {row.time}
                                 </td>
-                                <td className="py-2 px-4 border-r border-gray-200 font-semibold text-neutral-900">
+                                <td className="py-2 px-4 border-r border-gray-200 font-semibold text-brand-950">
                                   {row.specialty}
                                 </td>
                                 <td className="py-2 px-4 border-r border-gray-200 font-bold text-gray-900">
@@ -1648,10 +1633,10 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                 </div>
               )}
 
-              <div className="rounded-xl border border-neutral-300 bg-white p-4 shadow-xs">
+              <div className="rounded-xl border border-brand-200 bg-white p-4 shadow-xs">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-200 pb-3">
                   <div>
-                    <div className="text-[11px] font-bold tracking-wider text-brand-700 uppercase">
+                    <div className="text-[11px] font-bold tracking-wider text-accent-600 uppercase">
                       Consolidado Semanal
                     </div>
                     <div className="text-lg font-extrabold text-gray-900">
@@ -1683,7 +1668,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                       >
                         <div
                           className={`px-3 py-2 text-white flex items-center justify-between ${
-                            dayHasConflict ? 'bg-red-800' : 'bg-neutral-700'
+                            dayHasConflict ? 'bg-red-800' : 'bg-brand-600'
                           }`}
                         >
                           <div className="flex items-center gap-1.5">
@@ -1696,7 +1681,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                           </div>
                           <span
                             className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
-                              dayHasConflict ? 'bg-red-950 text-red-200' : 'bg-neutral-900 text-neutral-200'
+                              dayHasConflict ? 'bg-red-950 text-red-200' : 'bg-brand-900 text-brand-100'
                             }`}
                           >
                             {activeOnly.length} sessões
@@ -1740,7 +1725,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                                   }`}
                                 >
                                   <div className="flex items-center justify-between">
-                                    <span className="font-bold text-neutral-900">{a.time}</span>
+                                    <span className="font-bold text-brand-950">{a.time}</span>
                                     <span className="text-[10px] font-bold text-gray-500 uppercase">{a.specialty}</span>
                                   </div>
                                   <div className="text-[11px] text-gray-800 truncate">{a.therapistName}</div>
@@ -1778,7 +1763,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
               onClick={handleCopyTable}
               className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold shadow-xs transition-colors ${
                 copied
-                  ? 'bg-brand-600 text-white'
+                  ? 'bg-accent-600 text-white'
                   : 'bg-brand-700 text-white hover:bg-brand-800'
               }`}
               title="Copiar texto tabulado para colar direto no Excel ou WhatsApp"
