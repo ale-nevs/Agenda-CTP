@@ -33,18 +33,55 @@ interface ProfessionalSummary {
   days: DayOfWeekKey[];
 }
 
+interface TherapyBreakdown {
+  label: string;
+  sessions: number;
+  minutes: number;
+}
+
 interface TherapySummary {
   specialty: string;
   sessions: number;
   minutes: number;
   professionals: ProfessionalSummary[];
+  /** Fonoaudiologia (Prompt x convencional) e Terapia Ocupacional (Ayres x convencional) */
+  breakdown?: TherapyBreakdown[];
 }
 
 export function formatMinutes(total: number): string {
+  if (total <= 0) return '0h';
   const h = Math.floor(total / 60);
   const m = total % 60;
   if (h === 0) return `${m}min`;
   return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, '0')}`;
+}
+
+const FONO_GROUP = 'FONOAUDIOLOGIA';
+const TO_GROUP = 'TERAPIA OCUPACIONAL';
+const PROTOCOL_LABEL: Record<string, string> = { [FONO_GROUP]: 'Prompt', [TO_GROUP]: 'Ayres' };
+const CONVENTIONAL_LABEL = 'convencional';
+
+/**
+ * Agrupa a especialidade do atendimento: Fono Prompt entra em Fonoaudiologia e
+ * TO Ayres entra em Terapia Ocupacional, marcando se a sessão é do protocolo ou convencional.
+ */
+function classifyTherapy(appSpecialty: string, therapistSpecialty: string, extraText: string): { group: string; isProtocol: boolean } {
+  const spec = (appSpecialty || therapistSpecialty || 'ESPECIALIDADE').toUpperCase();
+  const text = `${appSpecialty} ${extraText}`
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  if (text.includes('prompt')) return { group: FONO_GROUP, isProtocol: true };
+  if (text.includes('ayres')) return { group: TO_GROUP, isProtocol: true };
+  if (spec.includes('FONO')) return { group: FONO_GROUP, isProtocol: false };
+  if (spec.includes('OCUPACIONAL') || /^TO\b/.test(spec)) return { group: TO_GROUP, isProtocol: false };
+  return { group: spec, isProtocol: false };
+}
+
+/** Texto "Xh de Prompt · Xh de convencional" de Fono / TO. */
+export function breakdownText(t: TherapySummary): string {
+  if (!t.breakdown) return '';
+  return t.breakdown.map((b) => `${formatMinutes(b.minutes)} de ${b.label}`).join(' · ');
 }
 
 /**
@@ -62,6 +99,7 @@ function computeTherapySummary(
   const days = scope === 'SEMANA' ? DAYS_OF_WEEK.map((d) => d.key) : [scope];
 
   const bySpecialty = new Map<string, Map<string, { name: string; slots: Set<string>; days: Set<DayOfWeekKey> }>>();
+  const protocolSlots = new Map<string, { protocol: Set<string>; conventional: Set<string> }>();
 
   days.forEach((day) => {
     const report = weeklyReports[day];
@@ -69,14 +107,21 @@ function computeTherapySummary(
     report.therapists.forEach((t) => {
       t.appointments.forEach((a) => {
         if (normalizePatientName(a.patientName) !== norm) return;
-        const specialty = (a.specialty || t.specialty || 'ESPECIALIDADE').toUpperCase();
+        const { group, isProtocol } = classifyTherapy(a.specialty || '', t.specialty || '', `${a.serviceRaw || ''} ${a.details || ''}`);
         const profKey = normalizeTherapistName(t.name) || t.id;
-        if (!bySpecialty.has(specialty)) bySpecialty.set(specialty, new Map());
-        const profs = bySpecialty.get(specialty)!;
+        const slotKey = `${day}|${getIntervalSlot(a.time)}`;
+        if (!bySpecialty.has(group)) bySpecialty.set(group, new Map());
+        const profs = bySpecialty.get(group)!;
         if (!profs.has(profKey)) profs.set(profKey, { name: t.name, slots: new Set(), days: new Set() });
         const prof = profs.get(profKey)!;
-        prof.slots.add(`${day}|${getIntervalSlot(a.time)}`);
+        prof.slots.add(slotKey);
         prof.days.add(day);
+
+        if (PROTOCOL_LABEL[group]) {
+          if (!protocolSlots.has(group)) protocolSlots.set(group, { protocol: new Set(), conventional: new Set() });
+          const split = protocolSlots.get(group)!;
+          (isProtocol ? split.protocol : split.conventional).add(`${profKey}|${slotKey}`);
+        }
       });
     });
   });
@@ -93,7 +138,14 @@ function computeTherapySummary(
         }))
         .sort((x, y) => y.sessions - x.sessions || x.name.localeCompare(y.name));
       const sessions = professionals.reduce((sum, p) => sum + p.sessions, 0);
-      return { specialty, sessions, minutes: sessions * SESSION_MINUTES, professionals };
+      const split = protocolSlots.get(specialty);
+      const breakdown = split
+        ? [
+            { label: PROTOCOL_LABEL[specialty], sessions: split.protocol.size, minutes: split.protocol.size * SESSION_MINUTES },
+            { label: CONVENTIONAL_LABEL, sessions: split.conventional.size, minutes: split.conventional.size * SESSION_MINUTES },
+          ]
+        : undefined;
+      return { specialty, sessions, minutes: sessions * SESSION_MINUTES, professionals, breakdown };
     })
     .sort((x, y) => y.sessions - x.sessions || x.specialty.localeCompare(y.specialty));
 }
@@ -450,7 +502,8 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
       const profs = t.professionals
         .map((p) => `${p.name} (${p.sessions} sessões · ${formatMinutes(p.minutes)} · ${p.days.map(dayShortLabel).join(', ')})`)
         .join('; ');
-      text += `${t.specialty}\t${t.sessions}\t${formatMinutes(t.minutes)}\t${profs}\n`;
+      const specialtyLabel = t.breakdown ? `${t.specialty} (${breakdownText(t)})` : t.specialty;
+      text += `${specialtyLabel}\t${t.sessions}\t${formatMinutes(t.minutes)}\t${profs}\n`;
     });
     text += `TOTAL\t${summaryTotals.sessions}\t${formatMinutes(summaryTotals.minutes)}\t${summaryTotals.professionals} profissional(is)\n`;
     return text;
@@ -476,7 +529,9 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
             .map(
               (t) => `
             <tr>
-              <td style="font-weight: bold;">${t.specialty}</td>
+              <td style="font-weight: bold;">${t.specialty}${
+                t.breakdown ? `<div style="font-weight: normal; font-size: 9.5px; color: #4b5563; margin-top: 2px;">${breakdownText(t)}</div>` : ''
+              }</td>
               <td style="text-align: center; font-weight: bold;">${t.sessions}</td>
               <td style="text-align: center; font-weight: bold;">${formatMinutes(t.minutes)}</td>
               <td>${t.professionals
@@ -612,6 +667,9 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
     ];
     therapySummary.forEach((t) => {
       summaryRows.push([t.specialty, `${t.professionals.length} profissional(is)`, t.sessions, formatMinutes(t.minutes), '']);
+      t.breakdown?.forEach((b) => {
+        summaryRows.push([`   ${b.label}`, '', b.sessions, formatMinutes(b.minutes), '']);
+      });
       t.professionals.forEach((p) => {
         summaryRows.push(['', p.name, p.sessions, formatMinutes(p.minutes), p.days.map(dayShortLabel).join(', ')]);
       });
@@ -1105,6 +1163,9 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                             <tr key={t.specialty} className="align-top hover:bg-neutral-100">
                               <td className="px-3 py-2.5">
                                 <div className="font-bold text-neutral-900">{t.specialty}</div>
+                                {t.breakdown && (
+                                  <div className="mt-0.5 text-[11px] font-semibold text-gray-600">{breakdownText(t)}</div>
+                                )}
                                 <div className="mt-1.5 h-1.5 w-full max-w-[180px] overflow-hidden rounded-full bg-gray-100">
                                   <div className="h-full rounded-full bg-accent-500" style={{ width: `${share}%` }} />
                                 </div>
