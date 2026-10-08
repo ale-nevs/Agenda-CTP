@@ -7,7 +7,7 @@ import {
   getConflictingPatientsForCell,
   normalizePatientName,
 } from './conflictUtils';
-import { APP_FULL_NAME, APP_NAME, APP_SUBTITLE, BRAND, FONT_FAMILY, GOOGLE_FONTS_HREF, getLogoDataUrl, getLogoPngBase64 } from '../brand';
+import { APP_FULL_NAME, APP_NAME, APP_SUBTITLE, BRAND, FONT_FAMILY, getLogoDataUrl, getLogoPngBase64 } from '../brand';
 
 export interface ExportTableData {
   title: string;
@@ -260,8 +260,8 @@ const DOCUMENT_CSS = `
   th, td { border: 1px solid #6b7a90; padding: 2px 3px; vertical-align: middle; word-wrap: break-word; overflow-wrap: anywhere; }
   col.c-time { width: 14mm; }
   thead th { text-align: center; font-weight: 800; }
-  tr.h-sala th { background: ${BRAND.primaryDarker}; color: #fff; letter-spacing: .3px; }
-  tr.h-terapeuta th { background: ${BRAND.primary}; color: #fff; }
+  tr.h-sala th { background: ${BRAND.primary}; color: #fff; letter-spacing: .3px; }
+  tr.h-terapeuta th { background: ${BRAND.primaryDarker}; color: #fff; }
   tr.h-especialidade th { background: ${BRAND.primaryLight}; color: ${BRAND.primaryDarker}; }
   th.corner { font-size: .72em; letter-spacing: -.2px; padding: 2px 1px; }
   tbody td.time { text-align: center; font-weight: 800; background: ${BRAND.primarySoft}; color: ${BRAND.primaryDarker}; }
@@ -293,7 +293,7 @@ const DOCUMENT_CSS = `
   .conflicts-title { font-weight: 800; margin-bottom: .8mm; }
   .conflicts ul { list-style: none; columns: 2; column-gap: 6mm; }
   .conflicts li { break-inside: avoid; line-height: 1.35; }
-  .ok { color: ${BRAND.accent}; font-weight: 700; }
+  .ok { color: ${BRAND.ok}; font-weight: 700; }
   .footer-line { display: flex; justify-content: space-between; color: ${BRAND.muted}; border-top: 1px solid ${BRAND.border}; padding-top: 1mm; }
   @page { size: A4 landscape; margin: 0; }
   @media print {
@@ -433,7 +433,6 @@ async function buildDocumentHtml(data: ExportTableData, options: { withToolbar: 
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escapeHtml(docTitle)}</title>
-  <link rel="stylesheet" href="${GOOGLE_FONTS_HREF}" />
   <style>${DOCUMENT_CSS}</style>
 </head>
 <body>
@@ -607,7 +606,7 @@ export async function exportExcel(data: ExportTableData) {
     const cell = ws.getCell(rowIdx, 1);
     cell.value = label;
     cell.font = { name: font, size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
-    cell.fill = fill(BRAND.accent);
+    cell.fill = fill(BRAND.primaryDarker);
     cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
     ws.getRow(rowIdx).height = 20;
     rowIdx++;
@@ -623,8 +622,8 @@ export async function exportExcel(data: ExportTableData) {
       ws.getRow(rowIdx - 1).addPageBreak();
     }
     addShiftTitle(`${shift.label.toUpperCase()} · ${shift.rangeLabel}`);
-    addHeaderRow('SALA', roomNames, BRAND.primaryDarker, '#FFFFFF');
-    addHeaderRow('TERAPEUTA', therapistNames, BRAND.primary, '#FFFFFF', 9);
+    addHeaderRow('SALA', roomNames, BRAND.primary, '#FFFFFF');
+    addHeaderRow('TERAPEUTA', therapistNames, BRAND.primaryDarker, '#FFFFFF', 9);
     addHeaderRow('HORÁRIO', specialties, BRAND.primaryLight, BRAND.primaryDarker, 9);
 
     shift.times.forEach(({ time, isMidday }) => {
@@ -696,7 +695,7 @@ export async function exportExcel(data: ExportTableData) {
       name: font,
       size: 10,
       bold: true,
-      color: { argb: argb(shiftConflicts.length > 0 ? BRAND.choqueDark : BRAND.accent) },
+      color: { argb: argb(shiftConflicts.length > 0 ? BRAND.choqueDark : BRAND.ok) },
     };
     if (shiftConflicts.length > 0) cTitle.fill = fill(BRAND.choqueBg);
     rowIdx++;

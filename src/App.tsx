@@ -7,7 +7,7 @@ import { RoomConfigModal } from './components/RoomConfigModal';
 import { PatientScheduleModal } from './components/PatientScheduleModal';
 import { exportStandaloneHtml, exportExcel, exportPdf, ExportTableData } from './utils/exportUtils';
 import { findScheduleConflictsForDay, getAllDayConflicts } from './utils/conflictUtils';
-import { APP_NAME, APP_SUBTITLE, LOGO_PATH } from './brand';
+import { APP_NAME, APP_SUBTITLE, LOGO_PATH, handleLogoError } from './brand';
 import { Calendar, Info, AlertTriangle, Zap, UserCheck } from 'lucide-react';
 
 const EMPTY_WEEKLY_REPORTS: Record<DayOfWeekKey, ParsedReport | null> = {
@@ -326,7 +326,7 @@ export default function App() {
       <header className="border-b-[3px] border-brand-700 bg-white print:hidden">
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-4">
-            <img src={LOGO_PATH} alt="Promédica" className="h-10 w-auto" />
+            <img src={LOGO_PATH} onError={handleLogoError} alt="Promédica" className="h-10 w-auto" />
             <div className="hidden h-9 w-px bg-slate-200 sm:block" />
             <div>
               <h1 className="text-lg font-extrabold leading-tight tracking-tight text-brand-800">{APP_NAME}</h1>
@@ -335,7 +335,7 @@ export default function App() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="inline-flex items-center gap-1.5 rounded-lg bg-brand-50 px-2.5 py-1.5 font-semibold text-brand-900">
+            <span className="inline-flex items-center gap-1.5 rounded-lg bg-neutral-100 px-2.5 py-1.5 font-semibold text-neutral-900">
               <Calendar className="h-3.5 w-3.5" />
               {report.dayOfWeek}
               {report.date ? ` · ${report.date}` : ''}
@@ -352,7 +352,7 @@ export default function App() {
                   className={`rounded-lg px-2.5 py-1.5 font-semibold ${
                     dayConflictsList.length > 0
                       ? 'bg-red-600 text-white'
-                      : 'bg-accent-50 text-accent-700 ring-1 ring-accent-100'
+                      : 'bg-green-50 text-green-700 ring-1 ring-green-100'
                   }`}
                 >
                   {dayConflictsList.length > 0 ? `${dayConflictsList.length} choque(s)` : 'Sem choques'}
@@ -436,7 +436,7 @@ export default function App() {
         <div className="mb-2 hidden border-b-2 border-brand-700 pb-2 print:block">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
-              <img src={LOGO_PATH} alt="Promédica" className="h-8 w-auto" />
+              <img src={LOGO_PATH} onError={handleLogoError} alt="Promédica" className="h-8 w-auto" />
               <div>
                 <h1 className="text-base font-extrabold text-brand-800">
                   {APP_NAME} · {APP_SUBTITLE}

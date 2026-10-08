@@ -167,11 +167,11 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
   // ---------------------------------------------------------------------------
   if (activeTherapists.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-brand-200 bg-white px-6 py-14 text-center shadow-xs">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-50 text-brand-700">
+      <div className="rounded-2xl border border-dashed border-neutral-300 bg-white px-6 py-14 text-center shadow-xs">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-neutral-100 text-brand-700">
           {hasReport ? <EyeOff className="h-7 w-7" /> : <FileSpreadsheet className="h-7 w-7" />}
         </div>
-        <h3 className="mt-4 text-base font-bold text-brand-950">
+        <h3 className="mt-4 text-base font-bold text-neutral-900">
           {hasReport ? `Todas as salas de ${dayLabel} estão ocultas` : `Nenhuma agenda carregada para ${dayLabel}`}
         </h3>
         <p className="mx-auto mt-1 max-w-md text-sm text-gray-500">
@@ -263,7 +263,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     );
     const hasConflict = Object.keys(conflictingPatients).length > 0;
 
-    let cellBgClass = 'bg-white font-semibold text-gray-900 hover:bg-brand-50/60 text-left';
+    let cellBgClass = 'bg-white font-semibold text-gray-900 hover:bg-neutral-100 text-left';
     if (highlighted) {
       cellBgClass = 'bg-yellow-200 font-bold text-gray-900 text-left';
     } else if (hasConflict) {
@@ -273,7 +273,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     } else if (analysis.isGrupo) {
       cellBgClass = 'bg-purple-100 font-bold text-purple-950 hover:bg-purple-200/70 text-left';
     } else if (isLunch) {
-      cellBgClass = 'bg-slate-50 text-slate-400 font-semibold tracking-wider text-center hover:bg-brand-50/40';
+      cellBgClass = 'bg-slate-50 text-slate-400 font-semibold tracking-wider text-center hover:bg-neutral-100';
     } else if (!content) {
       cellBgClass = 'bg-white text-gray-400 hover:bg-slate-50 text-left';
     }
@@ -339,7 +339,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     times.map((time) => (
       <tr key={`${period}-${time}`}>
         <td
-          className={`${stickyTimeCell} bg-brand-50 py-1 px-1 text-center font-bold text-brand-950`}
+          className={`${stickyTimeCell} bg-neutral-100 py-1 px-1 text-center font-bold text-neutral-900`}
         >
           {time}
         </td>
@@ -446,9 +446,9 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
           style={{ zoom, width: naturalTableWidth, tableLayout: 'fixed' }}
         >
           <thead className="sticky top-0 z-20">
-            {headerRow('roomName', 'SALA', 'bg-brand-950 text-white tracking-wider', true, 'sala', stickyHeadCell)}
-            {headerRow('name', 'TERAPEUTA', 'bg-brand-700 text-white', true, 'name', stickyHeadCell)}
-            {headerRow('specialty', 'HORÁRIO', 'bg-brand-100 text-brand-950', true, 'spec', stickyHeadCell)}
+            {headerRow('roomName', 'SALA', 'bg-brand-700 text-white tracking-wider', true, 'sala', stickyHeadCell)}
+            {headerRow('name', 'TERAPEUTA', 'bg-neutral-700 text-white', true, 'name', stickyHeadCell)}
+            {headerRow('specialty', 'HORÁRIO', 'bg-neutral-200 text-neutral-900', true, 'spec', stickyHeadCell)}
           </thead>
 
           <tbody>
@@ -464,8 +464,8 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
             )}
 
             {/* Cabeçalhos repetidos para o turno da tarde */}
-            {headerRow('name', 'TERAPEUTA', 'bg-brand-700 text-white', false, 'pm-name', stickyTimeCell)}
-            {headerRow('specialty', 'HORÁRIO', 'bg-brand-100 text-brand-950', false, 'pm-spec', stickyTimeCell)}
+            {headerRow('name', 'TERAPEUTA', 'bg-neutral-700 text-white', false, 'pm-name', stickyTimeCell)}
+            {headerRow('specialty', 'HORÁRIO', 'bg-neutral-200 text-neutral-900', false, 'pm-spec', stickyTimeCell)}
 
             {timeRows(afternoonTimes, 'afternoon')}
             {addTimeRow('afternoon', 'Hora', 'Inserir horário personalizado de tarde', 'Pressione Enter para adicionar horário de tarde')}
@@ -476,7 +476,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
       {/* Legenda clínica */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-3 py-2.5 text-xs print:hidden">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-slate-700">
-          <span className="font-bold text-brand-950">Legenda:</span>
+          <span className="font-bold text-neutral-900">Legenda:</span>
 
           <div className="flex items-center gap-1.5">
             <span className="inline-flex items-center gap-0.5 rounded border border-amber-400 bg-amber-200 px-1.5 py-0.5 text-[10px] font-black text-amber-950">

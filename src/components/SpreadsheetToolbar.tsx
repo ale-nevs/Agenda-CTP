@@ -82,7 +82,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
                   isSelected
                     ? 'bg-brand-700 text-white shadow-xs'
                     : hasData
-                    ? 'text-brand-900 hover:bg-brand-50'
+                    ? 'text-neutral-900 hover:bg-neutral-100'
                     : 'text-slate-400 hover:bg-slate-50'
                 }`}
                 title={hasData ? `Visualizar grade de ${label}` : `${label} (sem arquivo carregado)`}
@@ -99,7 +99,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
         <button
           onClick={onOpenPatientSearch}
           disabled={!hasAnyData}
-          className="inline-flex items-center gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800 transition-colors hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-neutral-100 px-3 py-1.5 text-xs font-semibold text-brand-800 transition-colors hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-40"
           title="Grade completa de um paciente (especialidades, profissionais e horários)"
         >
           <UserCheck className="h-4 w-4" />
@@ -155,7 +155,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
           <button
             onClick={onPrint}
             disabled={exportDisabled}
-            className={`${exportBtn} border-brand-700 bg-white text-brand-800 hover:bg-brand-50`}
+            className={`${exportBtn} border-brand-700 bg-white text-brand-800 hover:bg-neutral-100`}
             title="Gerar PDF (A4 paisagem): uma página por turno com as salas, legenda e choques"
           >
             {spinnerOr('pdf', <FileText className="h-3.5 w-3.5" />)}
@@ -201,7 +201,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
             onClick={onToggleLunchPlaceholder}
             className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors ${
               showLunchPlaceholder
-                ? 'border-brand-200 bg-brand-50 text-brand-900'
+                ? 'border-neutral-300 bg-neutral-100 text-neutral-900'
                 : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
             }`}
             title="Alternar a legenda 'ALMOÇO' nas salas livres entre 12h e 13h"
