@@ -27,7 +27,7 @@ export const PatientCellDisplay: React.FC<PatientCellDisplayProps> = ({
 
     return (
       <div className="flex items-center justify-between gap-1 min-h-[16px] leading-tight text-gray-900 font-semibold">
-        <span className="truncate">{patientName}</span>
+        <span className="whitespace-normal break-words">{patientName}</span>
         {otherConflict && (
           <span
             className="inline-flex items-center gap-0.5 rounded bg-red-600 text-white px-1.5 py-0.5 text-[9px] font-black border border-red-700 shadow-2xs shrink-0 cursor-help animate-pulse"
@@ -54,7 +54,7 @@ export const PatientCellDisplay: React.FC<PatientCellDisplayProps> = ({
       <div className="flex flex-wrap items-center gap-1">
         {analysis.isDupla && (
           <span
-            className="inline-flex items-center gap-0.5 rounded bg-amber-200 text-amber-950 px-1 py-0.2 text-[9px] font-black border border-amber-400 shrink-0"
+            className="inline-flex items-center gap-0.5 rounded bg-amber-100 text-amber-950 px-1 py-0.2 text-[9px] font-black border border-amber-300 shrink-0"
             title="Horário com 2 pacientes (Dupla)"
           >
             <Users className="h-2.5 w-2.5 inline" />
@@ -64,7 +64,7 @@ export const PatientCellDisplay: React.FC<PatientCellDisplayProps> = ({
 
         {analysis.isGrupo && (
           <span
-            className="inline-flex items-center gap-0.5 rounded bg-purple-200 text-purple-950 px-1 py-0.2 text-[9px] font-black border border-purple-400 shrink-0"
+            className="inline-flex items-center gap-0.5 rounded bg-violet-100 text-violet-900 px-1 py-0.2 text-[9px] font-black border border-violet-300 shrink-0"
             title={`Horário com ${analysis.count} pacientes (Grupo)`}
           >
             <Users className="h-2.5 w-2.5 inline" />
@@ -101,7 +101,7 @@ export const PatientCellDisplay: React.FC<PatientCellDisplayProps> = ({
 
           return (
             <div key={`${p.name}-${idx}`} className="flex items-center justify-between gap-1 text-[10px] leading-tight">
-              <span className="truncate font-bold text-gray-900">
+              <span className="whitespace-normal break-words font-bold text-gray-900">
                 {p.name}
                 {p.exactTime ? ` (${p.exactTime})` : ''}
               </span>

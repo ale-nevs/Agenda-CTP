@@ -190,8 +190,8 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     );
   }
 
-  const stickyTimeCell = 'sticky left-0 z-10 w-[68px] min-w-[68px] max-w-[68px] border border-slate-300';
-  const stickyHeadCell = 'sticky left-0 z-30 w-[68px] min-w-[68px] max-w-[68px] border border-slate-300';
+  const stickyTimeCell = 'sticky left-0 z-10 w-[68px] min-w-[68px] max-w-[68px] border border-slate-200';
+  const stickyHeadCell = 'sticky left-0 z-30 w-[68px] min-w-[68px] max-w-[68px] border border-slate-200';
 
   const headerRow = (
     field: 'roomName' | 'name' | 'specialty',
@@ -209,7 +209,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
         return (
           <th
             key={`${keyPrefix}-${therapist.id}`}
-            className={`border border-slate-300 py-1.5 px-1.5 text-center font-bold ${rowClass}`}
+            className={`border border-slate-200 py-1.5 px-1.5 text-center font-bold ${rowClass}`}
             style={{ width: ROOM_COL_WIDTH, minWidth: ROOM_COL_WIDTH, maxWidth: ROOM_COL_WIDTH }}
           >
             {isEditing ? (
@@ -235,11 +235,11 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
                 onClick={() => startEditHeader(therapist, field)}
                 title="Clique para editar"
               >
-                <span className="truncate">{value}</span>
+                <span className="whitespace-normal break-words leading-tight">{value}</span>
                 <Edit2 className="h-2.5 w-2.5 shrink-0 opacity-0 group-hover:opacity-80" />
               </div>
             ) : (
-              <span className="block truncate">{value}</span>
+              <span className="block whitespace-normal break-words leading-tight">{value}</span>
             )}
           </th>
         );
@@ -263,17 +263,17 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     );
     const hasConflict = Object.keys(conflictingPatients).length > 0;
 
-    let cellBgClass = 'bg-white font-semibold text-gray-900 hover:bg-neutral-100 text-left';
+    let cellBgClass = 'bg-emerald-50/70 font-semibold text-gray-900 hover:bg-emerald-100/60 text-left';
     if (highlighted) {
       cellBgClass = 'bg-yellow-200 font-bold text-gray-900 text-left';
     } else if (hasConflict) {
       cellBgClass = 'bg-red-50 font-bold text-red-950 hover:bg-red-100 ring-2 ring-inset ring-red-500 text-left';
     } else if (analysis.isDupla) {
-      cellBgClass = 'bg-amber-100 font-bold text-amber-950 hover:bg-amber-200/70 text-left';
+      cellBgClass = 'bg-amber-50 font-bold text-amber-950 hover:bg-amber-100/80 text-left';
     } else if (analysis.isGrupo) {
-      cellBgClass = 'bg-purple-100 font-bold text-purple-950 hover:bg-purple-200/70 text-left';
+      cellBgClass = 'bg-violet-50 font-bold text-violet-950 hover:bg-violet-100/80 text-left';
     } else if (isLunch) {
-      cellBgClass = 'bg-slate-50 text-slate-400 font-semibold tracking-wider text-center hover:bg-neutral-100';
+      cellBgClass = 'bg-slate-50 text-slate-400 font-semibold tracking-wider text-center hover:bg-slate-100';
     } else if (!content) {
       cellBgClass = 'bg-white text-gray-400 hover:bg-slate-50 text-left';
     }
@@ -291,7 +291,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     return (
       <td
         key={`cell-${therapist.id}-${time}`}
-        className={`relative border border-slate-300 py-1 px-1.5 align-middle transition-colors ${cellBgClass}`}
+        className={`relative border border-slate-200 py-1 px-1.5 align-middle transition-colors ${cellBgClass}`}
         onClick={() => !isEditing && startEditCell(therapist.id, time)}
         title={cellTooltip}
       >
@@ -335,17 +335,45 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     );
   };
 
-  const timeRows = (times: string[], period: Period) =>
-    times.map((time) => (
+  // Turno sem nenhum paciente para a profissional: uma única célula mesclada "SALA VAZIA"
+  const isShiftEmpty = (therapist: TherapistSchedule, times: string[]) =>
+    times.length > 1 &&
+    !(editingCell?.therapistId === therapist.id && times.includes(editingCell.time)) &&
+    times.every((t) => !getCellContent(therapist.id, t));
+
+  const renderEmptyShiftCell = (therapist: TherapistSchedule, times: string[]) => (
+    <td
+      key={`empty-${therapist.id}-${times[0]}`}
+      rowSpan={times.length}
+      className="cursor-pointer border border-slate-200 bg-slate-50 align-middle text-center text-[1.05em] font-bold tracking-[0.2em] text-slate-400 transition-colors hover:bg-slate-100"
+      onClick={() => startEditCell(therapist.id, times[0])}
+      title="Nenhum paciente neste turno - clique para adicionar"
+    >
+      SALA VAZIA
+    </td>
+  );
+
+  const timeRows = (times: string[], period: Period) => {
+    const mergeable = period !== 'midday';
+    const emptyIds = new Set(
+      mergeable ? activeTherapists.filter((t) => isShiftEmpty(t, times)).map((t) => t.id) : []
+    );
+    return times.map((time, rowIdx) => (
       <tr key={`${period}-${time}`}>
         <td
-          className={`${stickyTimeCell} bg-neutral-100 py-1 px-1 text-center font-bold text-neutral-900`}
+          className={`${stickyTimeCell} bg-brand-50 py-1 px-1 text-center font-bold text-brand-800`}
         >
           {time}
         </td>
-        {activeTherapists.map((therapist) => renderCell(therapist, time, period === 'midday'))}
+        {activeTherapists.map((therapist) => {
+          if (emptyIds.has(therapist.id)) {
+            return rowIdx === 0 ? renderEmptyShiftCell(therapist, times) : null;
+          }
+          return renderCell(therapist, time, period === 'midday');
+        })}
       </tr>
     ));
+  };
 
   const addTimeRow = (period: Period, buttonLabel: string, title: string, hint: string) => (
     <tr className="bg-slate-50/70">
@@ -379,7 +407,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
           </button>
         )}
       </td>
-      <td colSpan={activeTherapists.length} className="border border-slate-300 bg-slate-50/50 py-0.5 pl-3 text-left text-[10px] italic text-slate-400">
+      <td colSpan={activeTherapists.length} className="border border-slate-200 bg-slate-50/50 py-0.5 pl-3 text-left text-[10px] italic text-slate-400">
         {showAddTimePrompt === period ? hint : ''}
       </td>
     </tr>
@@ -447,8 +475,8 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
         >
           <thead className="sticky top-0 z-20">
             {headerRow('roomName', 'SALA', 'bg-brand-700 text-white tracking-wider', true, 'sala', stickyHeadCell)}
-            {headerRow('name', 'TERAPEUTA', 'bg-neutral-700 text-white', true, 'name', stickyHeadCell)}
-            {headerRow('specialty', 'HORÁRIO', 'bg-neutral-200 text-neutral-900', true, 'spec', stickyHeadCell)}
+            {headerRow('name', 'TERAPEUTA', 'bg-brand-100 text-brand-900', true, 'name', stickyHeadCell)}
+            {headerRow('specialty', 'HORÁRIO', 'bg-brand-50 text-brand-600', true, 'spec', stickyHeadCell)}
           </thead>
 
           <tbody>
@@ -464,8 +492,8 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
             )}
 
             {/* Cabeçalhos repetidos para o turno da tarde */}
-            {headerRow('name', 'TERAPEUTA', 'bg-neutral-700 text-white', false, 'pm-name', stickyTimeCell)}
-            {headerRow('specialty', 'HORÁRIO', 'bg-neutral-200 text-neutral-900', false, 'pm-spec', stickyTimeCell)}
+            {headerRow('name', 'TERAPEUTA', 'bg-brand-100 text-brand-900', false, 'pm-name', stickyTimeCell)}
+            {headerRow('specialty', 'HORÁRIO', 'bg-brand-50 text-brand-600', false, 'pm-spec', stickyTimeCell)}
 
             {timeRows(afternoonTimes, 'afternoon')}
             {addTimeRow('afternoon', 'Hora', 'Inserir horário personalizado de tarde', 'Pressione Enter para adicionar horário de tarde')}
@@ -479,7 +507,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
           <span className="font-bold text-neutral-900">Legenda:</span>
 
           <div className="flex items-center gap-1.5">
-            <span className="inline-flex items-center gap-0.5 rounded border border-amber-400 bg-amber-200 px-1.5 py-0.5 text-[10px] font-black text-amber-950">
+            <span className="inline-flex items-center gap-0.5 rounded border border-amber-300 bg-amber-100 px-1.5 py-0.5 text-[10px] font-black text-amber-950">
               <Users className="inline h-3 w-3" />
               Dupla
             </span>
@@ -487,7 +515,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5">
-            <span className="inline-flex items-center gap-0.5 rounded border border-purple-400 bg-purple-200 px-1.5 py-0.5 text-[10px] font-black text-purple-950">
+            <span className="inline-flex items-center gap-0.5 rounded border border-violet-300 bg-violet-100 px-1.5 py-0.5 text-[10px] font-black text-violet-900">
               <Users className="inline h-3 w-3" />
               Grupo (3+)
             </span>

@@ -21,7 +21,7 @@ import {
 import { ParsedReport, DayOfWeekKey, DAYS_OF_WEEK } from '../types';
 import { getIntervalSlot, normalizePatientName, normalizeTherapistName } from '../utils/conflictUtils';
 import { APP_FULL_NAME, BRAND, FONT_FAMILY, logoImgHtml } from '../brand';
-import * as XLSX from 'xlsx';
+import { triggerDownload } from '../utils/exportUtils';
 
 /** Duração considerada para cada sessão (grade padrão de 30 minutos). */
 const SESSION_MINUTES = 30;
@@ -148,6 +148,22 @@ function computeTherapySummary(
       return { specialty, sessions, minutes: sessions * SESSION_MINUTES, professionals, breakdown };
     })
     .sort((x, y) => y.sessions - x.sessions || x.specialty.localeCompare(y.specialty));
+}
+
+/** Cor suave de cada terapia na visão Quantidade / Profissionais. */
+const THERAPY_COLORS: Array<[RegExp, string]> = [
+  [/FONO/, '#38bdf8'],
+  [/OCUPACIONAL/, '#2dd4bf'],
+  [/PSICOTERAPIA/, '#818cf8'],
+  [/PSICOPEDAGOGIA/, '#f472b6'],
+  [/PSICOMOTRIC/, '#84cc16'],
+  [/MUSICO/, '#fb923c'],
+  [/ATENDIMENTO/, '#22d3ee'],
+];
+const FALLBACK_THERAPY_COLORS = ['#94a3b8', '#a3a3a3', '#c4b5fd', '#fda4af'];
+export function therapyColor(specialty: string, index = 0): string {
+  const match = THERAPY_COLORS.find(([re]) => re.test(specialty.toUpperCase()));
+  return match ? match[1] : FALLBACK_THERAPY_COLORS[index % FALLBACK_THERAPY_COLORS.length];
 }
 
 const dayShortLabel = (key: DayOfWeekKey) => DAYS_OF_WEEK.find((d) => d.key === key)?.label || key;
@@ -527,9 +543,9 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
         <tbody>
           ${therapySummary
             .map(
-              (t) => `
+              (t, tIdx) => `
             <tr>
-              <td style="font-weight: bold;">${t.specialty}${
+              <td style="font-weight: bold; border-left: 4px solid ${therapyColor(t.specialty, tIdx)};">${t.specialty}${
                 t.breakdown ? `<div style="font-weight: normal; font-size: 9.5px; color: #4b5563; margin-top: 2px;">${breakdownText(t)}</div>` : ''
               }</td>
               <td style="text-align: center; font-weight: bold;">${t.sessions}</td>
@@ -607,80 +623,164 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
     }
   };
 
-  // Export patient schedule to Excel (.xlsx)
-  const handleExportExcel = () => {
+  // Export patient schedule to Excel (.xlsx) com cores (encontrado / não encontrado / dupla / grupo / choque)
+  const handleExportExcel = async () => {
     if (!selectedPatient) return;
 
-    const wb = XLSX.utils.book_new();
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    wb.creator = APP_FULL_NAME;
+    const font = 'Arial';
+    const argb = (hex: string) => `FF${hex.replace('#', '').toUpperCase()}`;
+    const fill = (hex: string) => ({ type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: argb(hex) } });
+    const thin = { style: 'thin' as const, color: { argb: argb(BRAND.border) } };
+    const border = { top: thin, left: thin, bottom: thin, right: thin };
 
-    if (selectedDay !== 'SEMANA') {
-      const rows = [
-        ['', `PACIENTE: ${selectedPatient}`, '', '', ''],
-        ...(activeConflicts.length > 0
-          ? [['⚠️ ALERTA', `${activeConflicts.length} CHOQUE(S) DE HORÁRIO DETECTADO(S)`, '', '', '']]
-          : []),
-        [selectedDay, 'ESPECIALIDADE', 'PROFISSIOAL', 'HORÁRIO', 'SALA', 'OBSERVAÇÕES'],
-        ...displayRows.map((r) => [
+    type ScheduleRow = ReturnType<typeof getDaySchedule>[number];
+
+    const addScheduleSheet = (sheetName: string, title: string, conflictLabel: string | null, firstHeader: string, rows: ScheduleRow[]) => {
+      const ws = wb.addWorksheet(sheetName.slice(0, 31), {
+        pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+      });
+      ws.columns = [{ width: 10 }, { width: 25 }, { width: 40 }, { width: 50 }, { width: 12 }, { width: 22 }];
+
+      const titleRow = ws.addRow(['', title]);
+      titleRow.getCell(2).font = { name: font, size: 12, bold: true, color: { argb: argb(BRAND.primaryDarker) } };
+      if (conflictLabel) {
+        const alertRow = ws.addRow(['⚠️ ALERTA', conflictLabel]);
+        alertRow.eachCell((c) => {
+          c.font = { name: font, size: 10, bold: true, color: { argb: argb(BRAND.choqueDark) } };
+          c.fill = fill(BRAND.choqueBg);
+        });
+      }
+
+      const header = ws.addRow([firstHeader, 'ESPECIALIDADE', 'PROFISSIONAL', 'HORÁRIO', 'SALA', 'OBSERVAÇÕES']);
+      header.height = 20;
+      header.eachCell((c) => {
+        c.fill = fill(BRAND.primary);
+        c.font = { name: font, size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+        c.alignment = { vertical: 'middle', horizontal: 'center' };
+        c.border = border;
+      });
+
+      rows.forEach((r) => {
+        const row = ws.addRow([
           r.time,
           r.specialty,
           r.therapistName,
           r.agendaText,
           r.roomName || '',
           r.isConflict ? '⚠️ CHOQUE DE HORÁRIO' : r.isDupla ? 'Dupla' : r.isGrupo ? 'Grupo' : '',
-        ]),
-      ];
+        ]);
+        let bg: string = '#FFFFFF';
+        let color: string = BRAND.text;
+        let bold = true;
+        if (r.isConflict) {
+          bg = BRAND.choqueBg;
+          color = BRAND.choqueDark;
+        } else if (r.isDupla) {
+          bg = BRAND.duplaBg;
+          color = BRAND.duplaText;
+        } else if (r.isGrupo) {
+          bg = BRAND.grupoBg;
+          color = BRAND.grupoText;
+        } else if (r.found) {
+          bg = BRAND.foundBg;
+        } else {
+          color = '#B0B4BB';
+          bold = false;
+        }
+        for (let c = 1; c <= 6; c++) {
+          const cell = row.getCell(c);
+          cell.fill = fill(bg);
+          cell.font = { name: font, size: 9, bold, color: { argb: argb(color) } };
+          cell.alignment = { vertical: 'middle', horizontal: c === 1 || c === 5 ? 'center' : 'left', wrapText: true };
+          cell.border = border;
+        }
+      });
+    };
 
-      const ws = XLSX.utils.aoa_to_sheet(rows);
-      ws['!cols'] = [{ wch: 10 }, { wch: 25 }, { wch: 40 }, { wch: 50 }, { wch: 12 }, { wch: 22 }];
-      XLSX.utils.book_append_sheet(wb, ws, selectedDay);
+    if (selectedDay !== 'SEMANA') {
+      addScheduleSheet(
+        selectedDay,
+        `PACIENTE: ${selectedPatient}`,
+        activeConflicts.length > 0 ? `${activeConflicts.length} CHOQUE(S) DE HORÁRIO DETECTADO(S)` : null,
+        selectedDay,
+        displayRows
+      );
     } else {
-      // All days as separate sheets or single sheet
       DAYS_OF_WEEK.forEach((d) => {
         const schedule = getDaySchedule(d.key, selectedPatient);
         const dayConflicts = schedule.filter((s) => s.isConflict);
-        const rows = [
-          ['', `PACIENTE: ${selectedPatient} - ${d.fullLabel.toUpperCase()}`, '', '', ''],
-          ...(dayConflicts.length > 0
-            ? [['⚠️ ALERTA', `${dayConflicts.length} CHOQUE(S) DE HORÁRIO NESTE DIA`, '', '', '']]
-            : []),
-          [d.key, 'ESPECIALIDADE', 'PROFISSIOAL', 'HORÁRIO', 'SALA', 'OBSERVAÇÕES'],
-          ...schedule.map((r) => [
-            r.time,
-            r.specialty,
-            r.therapistName,
-            r.agendaText,
-            r.roomName || '',
-            r.isConflict ? '⚠️ CHOQUE DE HORÁRIO' : r.isDupla ? 'Dupla' : r.isGrupo ? 'Grupo' : '',
-          ]),
-        ];
-        const ws = XLSX.utils.aoa_to_sheet(rows);
-        ws['!cols'] = [{ wch: 10 }, { wch: 25 }, { wch: 40 }, { wch: 50 }, { wch: 12 }, { wch: 22 }];
-        XLSX.utils.book_append_sheet(wb, ws, d.label);
+        addScheduleSheet(
+          d.label,
+          `PACIENTE: ${selectedPatient} - ${d.fullLabel.toUpperCase()}`,
+          dayConflicts.length > 0 ? `${dayConflicts.length} CHOQUE(S) DE HORÁRIO NESTE DIA` : null,
+          d.key,
+          schedule
+        );
       });
     }
 
     // Aba com quantidade de horas por terapia e profissionais
-    const summaryRows: (string | number)[][] = [
-      [`PACIENTE: ${selectedPatient}`, '', '', '', ''],
-      [`QUANTIDADE / PROFISSIONAIS · ${scopeLabel.toUpperCase()}`, '', '', '', ''],
-      ['ESPECIALIDADE', 'PROFISSIONAL', 'SESSÕES', 'CARGA HORÁRIA', 'DIAS'],
-    ];
+    const sws = wb.addWorksheet('Quantidade-Profissionais');
+    sws.columns = [{ width: 30 }, { width: 40 }, { width: 10 }, { width: 15 }, { width: 30 }];
+    sws.addRow([`PACIENTE: ${selectedPatient}`]).getCell(1).font = {
+      name: font,
+      size: 12,
+      bold: true,
+      color: { argb: argb(BRAND.primaryDarker) },
+    };
+    sws.addRow([`QUANTIDADE / PROFISSIONAIS · ${scopeLabel.toUpperCase()}`]).getCell(1).font = {
+      name: font,
+      size: 10,
+      bold: true,
+      color: { argb: argb(BRAND.accent) },
+    };
+    const styleRow = (row: ReturnType<typeof sws.addRow>, bg: string, opts: { bold?: boolean; italic?: boolean; color?: string } = {}) => {
+      for (let c = 1; c <= 5; c++) {
+        const cell = row.getCell(c);
+        cell.fill = fill(bg);
+        cell.font = { name: font, size: 9, bold: opts.bold, italic: opts.italic, color: { argb: argb(opts.color || BRAND.text) } };
+        cell.alignment = { vertical: 'middle', horizontal: c === 3 || c === 4 ? 'center' : 'left' };
+        cell.border = border;
+      }
+    };
+    styleRow(sws.addRow(['ESPECIALIDADE', 'PROFISSIONAL', 'SESSÕES', 'CARGA HORÁRIA', 'DIAS']), BRAND.primary, {
+      bold: true,
+      color: '#FFFFFF',
+    });
     therapySummary.forEach((t) => {
-      summaryRows.push([t.specialty, `${t.professionals.length} profissional(is)`, t.sessions, formatMinutes(t.minutes), '']);
+      styleRow(
+        sws.addRow([t.specialty, `${t.professionals.length} profissional(is)`, t.sessions, formatMinutes(t.minutes), '']),
+        BRAND.primaryLight,
+        { bold: true, color: BRAND.primaryDarker }
+      );
       t.breakdown?.forEach((b) => {
-        summaryRows.push([`   ${b.label}`, '', b.sessions, formatMinutes(b.minutes), '']);
+        styleRow(sws.addRow([`   ${b.label}`, '', b.sessions, formatMinutes(b.minutes), '']), '#FFFFFF', {
+          italic: true,
+          color: BRAND.accent,
+        });
       });
       t.professionals.forEach((p) => {
-        summaryRows.push(['', p.name, p.sessions, formatMinutes(p.minutes), p.days.map(dayShortLabel).join(', ')]);
+        styleRow(
+          sws.addRow(['', p.name, p.sessions, formatMinutes(p.minutes), p.days.map(dayShortLabel).join(', ')]),
+          BRAND.foundBg
+        );
       });
     });
-    summaryRows.push(['TOTAL', `${summaryTotals.professionals} profissional(is)`, summaryTotals.sessions, formatMinutes(summaryTotals.minutes), '']);
-    const summaryWs = XLSX.utils.aoa_to_sheet(summaryRows);
-    summaryWs['!cols'] = [{ wch: 28 }, { wch: 40 }, { wch: 10 }, { wch: 15 }, { wch: 30 }];
-    XLSX.utils.book_append_sheet(wb, summaryWs, 'Quantidade-Profissionais');
+    styleRow(
+      sws.addRow(['TOTAL', `${summaryTotals.professionals} profissional(is)`, summaryTotals.sessions, formatMinutes(summaryTotals.minutes), '']),
+      BRAND.primaryLight,
+      { bold: true, color: BRAND.primaryDarker }
+    );
 
+    const buffer = await wb.xlsx.writeBuffer();
     const cleanName = selectedPatient.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
-    XLSX.writeFile(wb, `Grade_${cleanName}_${selectedDay}.xlsx`);
+    triggerDownload(
+      new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+      `Grade_${cleanName}_${selectedDay}.xlsx`
+    );
   };
 
   // Dedicated clean printing for patient schedule
@@ -892,11 +992,11 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
     table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
     th, td { border: 1px solid #333; padding: 4px 6px; font-size: 10px; text-align: left; }
     th { background-color: ${BRAND.primary}; color: #fff; font-weight: bold; }
-    .row-found { background-color: ${BRAND.primarySoft}; }
+    .row-found { background-color: ${BRAND.foundBg}; }
     .row-choque { background-color: #fee2e2; color: #7f1d1d; font-weight: bold; }
-    .row-dupla { background-color: #fef3c7; }
-    .row-grupo { background-color: #f3e8ff; }
-    .row-notfound { color: #888; font-style: italic; background-color: #fafafa; }
+    .row-dupla { background-color: ${BRAND.duplaBg}; }
+    .row-grupo { background-color: ${BRAND.grupoBg}; }
+    .row-notfound { color: #b0b4bb; background-color: #ffffff; }
     .badge { display: inline-block; font-size: 8px; font-weight: bold; padding: 1px 3px; border-radius: 3px; margin-right: 3px; }
     .badge-choque { background-color: #dc2626; color: #fff; border: 1px solid #991b1b; }
     .badge-dupla { background-color: #fde68a; color: #78350f; border: 1px solid #d97706; }
@@ -1157,17 +1257,25 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
-                        {therapySummary.map((t) => {
+                        {therapySummary.map((t, tIdx) => {
                           const share = summaryTotals.minutes > 0 ? (t.minutes / summaryTotals.minutes) * 100 : 0;
+                          const color = therapyColor(t.specialty, tIdx);
                           return (
-                            <tr key={t.specialty} className="align-top hover:bg-neutral-100">
-                              <td className="px-3 py-2.5">
-                                <div className="font-bold text-neutral-900">{t.specialty}</div>
+                            <tr
+                              key={t.specialty}
+                              className="align-top hover:bg-slate-50"
+                              style={{ boxShadow: `inset 4px 0 0 ${color}` }}
+                            >
+                              <td className="px-3 py-2.5 pl-4">
+                                <div className="flex items-center gap-1.5 font-bold text-neutral-900">
+                                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                                  {t.specialty}
+                                </div>
                                 {t.breakdown && (
                                   <div className="mt-0.5 text-[11px] font-semibold text-gray-600">{breakdownText(t)}</div>
                                 )}
                                 <div className="mt-1.5 h-1.5 w-full max-w-[180px] overflow-hidden rounded-full bg-gray-100">
-                                  <div className="h-full rounded-full bg-accent-500" style={{ width: `${share}%` }} />
+                                  <div className="h-full rounded-full" style={{ width: `${share}%`, backgroundColor: color }} />
                                 </div>
                               </td>
                               <td className="px-3 py-2.5 text-center text-sm font-extrabold text-gray-900">{t.sessions}</td>
@@ -1303,7 +1411,6 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                         </tr>
                       ) : (
                         displayRows.map((row, idx) => {
-                          const isEven = idx % 2 === 0;
 
                           // Priority 1: Schedule Conflict (same patient scheduled with 2+ professionals at the same time)
                           if (row.isConflict) {
@@ -1374,10 +1481,10 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                             const isGrupo = row.isGrupo;
 
                             const rowBg = isDupla
-                              ? 'bg-amber-100 hover:bg-amber-150 border-l-4 border-l-amber-500 text-amber-950 font-bold'
-                              : 'bg-purple-100 hover:bg-purple-150 border-l-4 border-l-purple-500 text-purple-950 font-bold';
+                              ? 'bg-amber-50 hover:bg-amber-100/70 border-l-4 border-l-amber-400 text-amber-950 font-bold'
+                              : 'bg-violet-50 hover:bg-violet-100/70 border-l-4 border-l-violet-400 text-violet-900 font-bold';
 
-                            const borderCell = isDupla ? 'border-amber-200' : 'border-purple-200';
+                            const borderCell = isDupla ? 'border-amber-200' : 'border-violet-200';
 
                             return (
                               <tr
@@ -1387,7 +1494,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                                 <td className={`py-2 px-3 text-center border-r ${borderCell}`}>
                                   {row.time}
                                 </td>
-                                <td className={`py-2 px-4 border-r ${borderCell} ${isDupla ? 'text-amber-900' : 'text-purple-900'}`}>
+                                <td className={`py-2 px-4 border-r ${borderCell} ${isDupla ? 'text-amber-900' : 'text-violet-900'}`}>
                                   {row.specialty}
                                 </td>
                                 <td className={`py-2 px-4 border-r ${borderCell}`}>
@@ -1397,13 +1504,13 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                                   <div className="flex flex-col gap-1">
                                     <div className="flex items-center gap-2">
                                       {isDupla && (
-                                        <span className="inline-flex items-center gap-1 rounded bg-amber-200 text-amber-950 px-2 py-0.5 text-[10px] font-black shrink-0 border border-amber-400 shadow-2xs">
+                                        <span className="inline-flex items-center gap-1 rounded bg-amber-100 text-amber-950 px-2 py-0.5 text-[10px] font-black shrink-0 border border-amber-300 shadow-2xs">
                                           <Users className="h-3 w-3" />
                                           Dupla
                                         </span>
                                       )}
                                       {isGrupo && (
-                                        <span className="inline-flex items-center gap-1 rounded bg-purple-200 text-purple-950 px-2 py-0.5 text-[10px] font-black shrink-0 border border-purple-400 shadow-2xs">
+                                        <span className="inline-flex items-center gap-1 rounded bg-violet-100 text-violet-900 px-2 py-0.5 text-[10px] font-black shrink-0 border border-violet-300 shadow-2xs">
                                           <Users className="h-3 w-3" />
                                           Grupo ({row.count})
                                         </span>
@@ -1446,7 +1553,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                             return (
                               <tr
                                 key={row.time}
-                                className="bg-neutral-100/70 hover:bg-neutral-200 transition-colors text-gray-900"
+                                className="bg-emerald-50 hover:bg-emerald-100/70 border-l-4 border-l-emerald-300 transition-colors text-gray-900"
                               >
                                 <td className="py-2 px-3 text-center border-r border-gray-200 font-bold text-neutral-900">
                                   {row.time}
@@ -1468,18 +1575,18 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                           return (
                             <tr
                               key={row.time}
-                              className={isEven ? 'bg-white hover:bg-gray-50/70' : 'bg-gray-50/40 hover:bg-gray-100/50'}
+                              className="bg-white text-gray-400 hover:bg-gray-50/70"
                             >
-                              <td className="py-2 px-3 text-center border-r border-gray-200 font-bold text-gray-500">
+                              <td className="py-2 px-3 text-center border-r border-gray-200 font-semibold text-gray-400">
                                 {row.time}
                               </td>
-                              <td className="py-2 px-4 border-r border-gray-200 text-gray-400">
+                              <td className="py-2 px-4 border-r border-gray-200 text-[11px] text-gray-300">
                                 NÃO ENCONTRADO
                               </td>
-                              <td className="py-2 px-4 border-r border-gray-200 text-gray-400">
+                              <td className="py-2 px-4 border-r border-gray-200 text-[11px] text-gray-300">
                                 NÃO ENCONTRADO
                               </td>
-                              <td className="py-2 px-4 text-gray-400">
+                              <td className="py-2 px-4 text-[11px] text-gray-300">
                                 NÃO ENCONTRADO
                               </td>
                             </tr>
@@ -1629,7 +1736,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                                 <div
                                   key={a.time}
                                   className={`py-1.5 px-2 rounded flex flex-col gap-0.5 ${
-                                    a.isMultiple ? 'bg-amber-100 font-bold text-amber-950' : 'hover:bg-gray-50'
+                                    a.isMultiple ? 'bg-amber-50 font-bold text-amber-950' : 'bg-emerald-50/60 hover:bg-emerald-50'
                                   }`}
                                 >
                                   <div className="flex items-center justify-between">
