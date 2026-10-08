@@ -2,30 +2,33 @@
 
 /* Identidade visual (espelhada em src/brand.ts) */
 @theme {
-  --font-sans: "Montserrat", "Segoe UI", Arial, Helvetica, sans-serif;
+  /* Fonte do site promedica.com.br (font-helvetica) */
+  --font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
 
-  --color-brand-50: #eef5fc;
-  --color-brand-100: #d9e8f7;
-  --color-brand-200: #b5d1ef;
-  --color-brand-300: #84b2e3;
-  --color-brand-400: #4f8dd3;
-  --color-brand-500: #2a6fc0;
-  --color-brand-600: #1a58a6;
-  --color-brand-700: #154788;
-  --color-brand-800: #133c70;
-  --color-brand-900: #10305a;
-  --color-brand-950: #0a1f3d;
+  /* Vermelho Promédica: #BC1118 (hover #A10E15) */
+  --color-brand-50: #fdf3f3;
+  --color-brand-100: #fbe4e5;
+  --color-brand-200: #f7c9cb;
+  --color-brand-300: #f0a0a4;
+  --color-brand-400: #e56a70;
+  --color-brand-500: #d63c43;
+  --color-brand-600: #c8222a;
+  --color-brand-700: #bc1118;
+  --color-brand-800: #a10e15;
+  --color-brand-900: #7e0c11;
+  --color-brand-950: #4a060a;
 
-  --color-accent-50: #e6f7f6;
-  --color-accent-100: #c2ece9;
-  --color-accent-500: #00a19a;
-  --color-accent-600: #008a84;
-  --color-accent-700: #00706b;
+  /* Cinzas Promédica (promedica-gray / promedica-dark-gray) */
+  --color-accent-50: #f5f5f5;
+  --color-accent-100: #e8e8e8;
+  --color-accent-500: #6f6f6e;
+  --color-accent-600: #4a4a49;
+  --color-accent-700: #3c3c3b;
 }
 
 html, body {
   font-family: var(--font-sans);
-  background-color: #f4f7fb;
+  background-color: #f5f5f5;
 }
 
 @media print {
