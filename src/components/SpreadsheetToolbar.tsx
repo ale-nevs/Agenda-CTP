@@ -82,14 +82,14 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
                   isSelected
                     ? 'bg-brand-700 text-white shadow-xs'
                     : hasData
-                    ? 'text-neutral-900 hover:bg-neutral-100'
+                    ? 'bg-brand-50 text-brand-800 hover:bg-brand-100'
                     : 'text-slate-400 hover:bg-slate-50'
                 }`}
                 title={hasData ? `Visualizar grade de ${label}` : `${label} (sem arquivo carregado)`}
               >
                 <span>{label}</span>
                 {hasData && (
-                  <span className={`h-1.5 w-1.5 rounded-full ${isSelected ? 'bg-accent-100' : 'bg-accent-500'}`} />
+                  <span className={`h-1.5 w-1.5 rounded-full ${isSelected ? 'bg-brand-200' : 'bg-brand-500'}`} />
                 )}
               </button>
             );
@@ -99,7 +99,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
         <button
           onClick={onOpenPatientSearch}
           disabled={!hasAnyData}
-          className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-neutral-100 px-3 py-1.5 text-xs font-semibold text-brand-800 transition-colors hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex items-center gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800 transition-colors hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-40"
           title="Grade completa de um paciente (especialidades, profissionais e horários)"
         >
           <UserCheck className="h-4 w-4" />
@@ -122,7 +122,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
           <button
             onClick={onOpenRoomConfig}
             disabled={!hasDayData}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-800 transition-colors hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-40"
             title="Gerenciar quais terapeutas ocupam cada sala"
           >
             <SlidersHorizontal className="h-3.5 w-3.5 text-brand-700" />
@@ -145,7 +145,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
           <button
             onClick={onExportExcel}
             disabled={exportDisabled}
-            className={`${exportBtn} border-accent-600 bg-accent-600 text-white hover:bg-accent-700`}
+            className={`${exportBtn} border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700`}
             title="Baixar planilha Excel (.xlsx) no mesmo formato da tabela"
           >
             {spinnerOr('excel', <FileSpreadsheet className="h-3.5 w-3.5" />)}
@@ -155,7 +155,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
           <button
             onClick={onPrint}
             disabled={exportDisabled}
-            className={`${exportBtn} border-brand-700 bg-white text-brand-800 hover:bg-neutral-100`}
+            className={`${exportBtn} border-brand-300 bg-brand-50 text-brand-800 hover:bg-brand-100`}
             title="Gerar PDF (A4 paisagem): uma página por turno com as salas, legenda e choques"
           >
             {spinnerOr('pdf', <FileText className="h-3.5 w-3.5" />)}
@@ -165,7 +165,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
           <button
             onClick={onExportHtml}
             disabled={exportDisabled}
-            className={`${exportBtn} border-slate-200 bg-white text-slate-700 hover:bg-slate-50`}
+            className={`${exportBtn} border-brand-200 bg-white text-brand-800 hover:bg-brand-50`}
             title="Salvar arquivo HTML independente para abrir offline em qualquer computador ou celular"
           >
             {spinnerOr('html', <Download className="h-3.5 w-3.5" />)}
@@ -201,14 +201,14 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
             onClick={onToggleLunchPlaceholder}
             className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors ${
               showLunchPlaceholder
-                ? 'border-neutral-300 bg-neutral-100 text-neutral-900'
+                ? 'border-brand-200 bg-brand-50 text-brand-950'
                 : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
             }`}
             title="Alternar a legenda 'ALMOÇO' nas salas livres entre 12h e 13h"
           >
             12h–13h: {showLunchPlaceholder ? 'legenda "ALMOÇO"' : 'células livres'}
           </button>
-          <span className="rounded-lg bg-white px-2.5 py-1 font-semibold text-slate-600 ring-1 ring-slate-200">
+          <span className="rounded-lg bg-brand-50 px-2.5 py-1 font-semibold text-brand-800 ring-1 ring-brand-200">
             Grade 30 min · <strong className="text-brand-800">{totalAppointments}</strong> agendamentos
           </span>
         </div>

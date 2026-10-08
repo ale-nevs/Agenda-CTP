@@ -5,19 +5,19 @@
   /* Fonte do site promedica.com.br (font-helvetica) */
   --font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
 
-  /* Grafite (cinza da logo Promédica) — cor principal da interface.
+  /* Petróleo — cor principal da interface (selecionado = 700; selecionável = 50/100).
      O vermelho fica reservado para alertas e choques. */
-  --color-brand-50: #f6f7f9;
-  --color-brand-100: #eceef2;
-  --color-brand-200: #d7dbe2;
-  --color-brand-300: #b4bbc6;
-  --color-brand-400: #8a94a4;
-  --color-brand-500: #687386;
-  --color-brand-600: #535d6f;
-  --color-brand-700: #444c5b;
-  --color-brand-800: #3a404c;
-  --color-brand-900: #2f343d;
-  --color-brand-950: #1f2228;
+  --color-brand-50: #ecfbfd;
+  --color-brand-100: #d2f3f8;
+  --color-brand-200: #a8e6f0;
+  --color-brand-300: #6fd1e2;
+  --color-brand-400: #33b3cb;
+  --color-brand-500: #1797b0;
+  --color-brand-600: #127a92;
+  --color-brand-700: #136377;
+  --color-brand-800: #165263;
+  --color-brand-900: #174554;
+  --color-brand-950: #082c39;
 
   /* Cinzas Promédica (promedica-gray / promedica-dark-gray) */
   --color-accent-50: #f5f5f5;

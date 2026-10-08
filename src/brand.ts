@@ -18,13 +18,13 @@ export const handleLogoError = (e: { currentTarget: HTMLImageElement }) => {
 };
 
 export const BRAND = {
-  primary: '#444C5B', // grafite (cinza da logo) — cabeçalhos e botões
-  primaryDark: '#3A404C',
-  primaryDarker: '#2F343D', // textos escuros
-  primaryLight: '#ECEEF2', // linha TERAPEUTA
-  primarySoft: '#F6F7F9', // linha de especialidade / coluna de horários
+  primary: '#136377', // petróleo — linha SALA, cabeçalhos e botões
+  primaryDark: '#165263',
+  primaryDarker: '#174554', // textos escuros
+  primaryLight: '#D2F3F8', // tom claro (selecionável)
+  primarySoft: '#ECFBFD', // coluna de horários
   logoRed: '#BC1118', // vermelho Promédica: usado apenas na logo
-  accent: '#687386',
+  accent: '#127A92',
   ok: '#15803D',
   foundBg: '#ECFDF5', // atendimento encontrado (verde bem claro)
   text: '#2B2B2B',
