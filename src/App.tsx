@@ -1,23 +1,55 @@
 import React, { useState, useMemo } from 'react';
-import { INITIAL_REPORT_DATA, INITIAL_WEEKLY_REPORTS } from './data/sampleReportData';
-import { ParsedReport, TherapistSchedule, DayOfWeekKey } from './types';
+import { ParsedReport, TherapistSchedule, DayOfWeekKey, DAYS_OF_WEEK } from './types';
 import { SpreadsheetGrid } from './components/SpreadsheetGrid';
-import { SpreadsheetToolbar } from './components/SpreadsheetToolbar';
+import { SpreadsheetToolbar, ExportKind } from './components/SpreadsheetToolbar';
 import { UploadModal } from './components/UploadModal';
 import { RoomConfigModal } from './components/RoomConfigModal';
 import { PatientScheduleModal } from './components/PatientScheduleModal';
-import { exportStandaloneHtml, exportExcel } from './utils/exportUtils';
+import { exportStandaloneHtml, exportExcel, exportPdf, ExportTableData } from './utils/exportUtils';
 import { findScheduleConflictsForDay, getAllDayConflicts } from './utils/conflictUtils';
-import { Calendar, FileSpreadsheet, Info, CheckCircle, AlertTriangle, Zap, UserCheck } from 'lucide-react';
+import { APP_NAME, APP_SUBTITLE, LOGO_PATH } from './brand';
+import { Calendar, Info, AlertTriangle, Zap, UserCheck } from 'lucide-react';
+
+const EMPTY_WEEKLY_REPORTS: Record<DayOfWeekKey, ParsedReport | null> = {
+  SEGUNDA: null,
+  TERÇA: null,
+  QUARTA: null,
+  QUINTA: null,
+  SEXTA: null,
+  SÁBADO: null,
+};
+
+function emptyReportFor(day: DayOfWeekKey): ParsedReport {
+  return {
+    title: 'AGENDA DE CONSULTAS - DISTRIBUIÇÃO POR SALAS',
+    clinic: `${APP_NAME} · ${APP_SUBTITLE}`,
+    period: '',
+    date: '',
+    dayOfWeek: DAYS_OF_WEEK.find((d) => d.key === day)?.fullLabel || day,
+    therapists: [],
+    allUniqueTimes: [],
+  };
+}
 
 export default function App() {
+  // A grade começa vazia: os dados entram somente pelo upload dos arquivos
   const [weeklyReports, setWeeklyReports] = useState<Record<DayOfWeekKey, ParsedReport | null>>(
-    () => INITIAL_WEEKLY_REPORTS
+    () => EMPTY_WEEKLY_REPORTS
   );
   const [activeDay, setActiveDay] = useState<DayOfWeekKey>('SEGUNDA');
+  const [exporting, setExporting] = useState<ExportKind | null>(null);
+
+  const hasDayData = Boolean(weeklyReports[activeDay]);
+  const hasAnyData = Object.values(weeklyReports).some(Boolean);
+
+  // Somente em desenvolvimento: ?exemplo carrega os dados de exemplo para testes
+  React.useEffect(() => {
+    if (!import.meta.env.DEV || !new URLSearchParams(window.location.search).has('exemplo')) return;
+    import('./data/sampleReportData').then((m) => setWeeklyReports(m.INITIAL_WEEKLY_REPORTS));
+  }, []);
 
   const report = useMemo<ParsedReport>(() => {
-    return weeklyReports[activeDay] || INITIAL_REPORT_DATA;
+    return weeklyReports[activeDay] || emptyReportFor(activeDay);
   }, [weeklyReports, activeDay]);
 
   // Per-day isolated overrides so switching days does not freeze or pollute rooms
@@ -34,7 +66,6 @@ export default function App() {
   const [customAfternoonTimes, setCustomAfternoonTimes] = useState<string[]>([]);
   const [showLunchPlaceholder, setShowLunchPlaceholder] = useState<boolean>(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [zoomLevel, setZoomLevel] = useState<number>(1); // 0 = 75%, 1 = 100%, 2 = 125%
 
   // Modals
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -78,8 +109,9 @@ export default function App() {
     }
   };
 
-  const handleResetToSample = () => {
-    setWeeklyReports(INITIAL_WEEKLY_REPORTS);
+  const handleClearData = () => {
+    if (!window.confirm('Remover todos os arquivos carregados e esvaziar a grade?')) return;
+    setWeeklyReports(EMPTY_WEEKLY_REPORTS);
     setActiveDay('SEGUNDA');
     setDayCellOverrides({});
     setDayTherapistOverrides({});
@@ -254,7 +286,7 @@ export default function App() {
   }, [conflictsMap]);
 
   // Export handlers
-  const getExportData = () => ({
+  const getExportData = (): ExportTableData => ({
     title: report.title,
     clinic: report.clinic,
     date: report.date,
@@ -267,128 +299,73 @@ export default function App() {
     showLunchPlaceholder,
   });
 
-  const handleExportHtml = () => {
-    exportStandaloneHtml(getExportData());
+  const runExport = async (kind: ExportKind, fn: (data: ExportTableData) => Promise<void>) => {
+    if (exporting) return;
+    setExporting(kind);
+    try {
+      await fn(getExportData());
+    } catch (err) {
+      console.error(err);
+      alert('Não foi possível gerar o arquivo. Tente novamente.');
+    } finally {
+      setExporting(null);
+    }
   };
 
-  const handleExportExcel = () => {
-    exportExcel(getExportData());
-  };
-
-  const handlePrint = () => {
-    window.print();
-  };
+  const handleExportHtml = () => runExport('html', exportStandaloneHtml);
+  const handleExportExcel = () => runExport('excel', exportExcel);
+  const handlePrint = () => runExport('pdf', exportPdf);
 
   const totalAppointmentsCount = useMemo(() => {
     return activeTherapists.reduce((sum, t) => sum + t.appointments.length, 0);
   }, [activeTherapists]);
 
   return (
-    <div className="min-h-screen bg-[#f7f9fa] text-gray-900 pb-12 print:bg-white print:p-0">
-      {/* Top Clinic Header Banner */}
-      <header className="border-b border-gray-200 bg-white shadow-xs print:hidden">
-        <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-800 text-white shadow-xs">
-                <FileSpreadsheet className="h-6 w-6" />
-              </div>
-              <div>
-                <h1 className="text-base font-extrabold tracking-tight text-emerald-950 sm:text-lg">
-                  {report.clinic}
-                </h1>
-                <div className="flex items-center gap-2 text-xs text-gray-500">
-                  <span className="font-semibold text-gray-700">AGENDA DE CONSULTAS:</span>
-                  <span className="inline-flex items-center gap-1 font-bold text-emerald-800">
-                    <Calendar className="h-3 w-3" />
-                    {report.date} &bull; {report.dayOfWeek}
-                  </span>
-                  <span>&bull;</span>
-                  <span>Arquivo: <strong>PS120108</strong></span>
-                </div>
-              </div>
+    <div className="min-h-screen bg-[#f4f7fb] pb-12 text-slate-900 print:bg-white print:p-0">
+      {/* Cabeçalho */}
+      <header className="border-b-[3px] border-brand-700 bg-white print:hidden">
+        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6">
+          <div className="flex items-center gap-4">
+            <img src={LOGO_PATH} alt="Promédica" className="h-10 w-auto" />
+            <div className="hidden h-9 w-px bg-slate-200 sm:block" />
+            <div>
+              <h1 className="text-lg font-extrabold leading-tight tracking-tight text-brand-800">{APP_NAME}</h1>
+              <p className="text-xs font-semibold uppercase tracking-wider text-accent-600">{APP_SUBTITLE}</p>
             </div>
+          </div>
 
-            {/* Status badges */}
-            <div className="flex items-center gap-2">
-              <div className="rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-900">
-                {activeTherapists.length} Salas / Profissionais
-              </div>
-              <div className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-900">
-                {totalAppointmentsCount} Consultas
-              </div>
-            </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="inline-flex items-center gap-1.5 rounded-lg bg-brand-50 px-2.5 py-1.5 font-semibold text-brand-900">
+              <Calendar className="h-3.5 w-3.5" />
+              {report.dayOfWeek}
+              {report.date ? ` · ${report.date}` : ''}
+            </span>
+            {hasDayData && (
+              <>
+                <span className="rounded-lg bg-white px-2.5 py-1.5 font-semibold text-slate-700 ring-1 ring-slate-200">
+                  {activeTherapists.length} salas
+                </span>
+                <span className="rounded-lg bg-white px-2.5 py-1.5 font-semibold text-slate-700 ring-1 ring-slate-200">
+                  {totalAppointmentsCount} consultas
+                </span>
+                <span
+                  className={`rounded-lg px-2.5 py-1.5 font-semibold ${
+                    dayConflictsList.length > 0
+                      ? 'bg-red-600 text-white'
+                      : 'bg-accent-50 text-accent-700 ring-1 ring-accent-100'
+                  }`}
+                >
+                  {dayConflictsList.length > 0 ? `${dayConflictsList.length} choque(s)` : 'Sem choques'}
+                </span>
+              </>
+            )}
           </div>
         </div>
       </header>
 
-      {/* Main Container */}
-      <main className="mx-auto max-w-7xl px-3 py-4 sm:px-6">
-        {/* Instructions banner */}
-        <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-950 shadow-xs print:hidden">
-          <div className="flex items-start gap-2.5">
-            <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
-            <div className="flex-1">
-              <p className="font-bold">
-                Grade Padrão Clínica ativa &bull; Visualização unificada de 30 em 30 minutos
-              </p>
-              <p className="mt-0.5 text-gray-700">
-                Cada coluna representa uma <strong>SALA</strong> com a respectiva profissional (linha <strong>TERAPEUTA</strong>) e especialidade (linha <strong>HORÁRIO</strong>). As salas e pacientes atualizam automaticamente ao navegar entre Segunda, Terça, Quarta, Quinta, Sexta e Sábado.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Prominent Schedule Conflict Alert Banner */}
-        {dayConflictsList.length > 0 && (
-          <div className="mb-3 rounded-lg border-2 border-red-500 bg-red-50 p-3.5 text-xs text-red-950 shadow-sm print:hidden animate-pulse">
-            <div className="flex items-start gap-3">
-              <div className="rounded-full bg-red-100 p-1.5 text-red-700 shrink-0">
-                <AlertTriangle className="h-5 w-5" />
-              </div>
-              <div className="flex-1">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h4 className="font-extrabold text-sm text-red-900 flex items-center gap-1.5">
-                    <Zap className="h-4 w-4 fill-red-600 text-red-600" />
-                    CHOQUE DE HORÁRIO DETECTADO: {dayConflictsList.length} conflito(s) de agendamento na {report.dayOfWeek}!
-                  </h4>
-                  <button
-                    onClick={() => setIsPatientSearchOpen(true)}
-                    className="rounded bg-red-600 px-3 py-1 text-xs font-bold text-white shadow-xs hover:bg-red-700 flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <UserCheck className="h-3.5 w-3.5" />
-                    <span>Ver Grade Completa do Paciente</span>
-                  </button>
-                </div>
-                <p className="mt-1 text-red-800 font-medium">
-                  O mesmo paciente está agendado simultaneamente para dois profissionais diferentes no mesmo horário (intervalo de 30 minutos):
-                </p>
-                <div className="mt-2 space-y-1.5">
-                  {dayConflictsList.map((c) => (
-                    <div
-                      key={c.key}
-                      onClick={() => setIsPatientSearchOpen(true)}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded bg-white px-3 py-1.5 border border-red-300 shadow-2xs hover:bg-red-50 cursor-pointer"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="font-black text-red-950 text-xs">{c.patientName}</span>
-                        <span className="rounded bg-red-600 text-white px-1.5 py-0.5 text-[10px] font-black">
-                          Horário {c.slotTime}
-                        </span>
-                      </div>
-                      <div className="text-[11px] font-semibold text-gray-800">
-                        {c.description}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
+      <main className="mx-auto max-w-[1600px] space-y-3 px-3 py-4 sm:px-6">
         {/* Toolbar */}
-        <div className="mb-3 print:hidden">
+        <div className="print:hidden">
           <SpreadsheetToolbar
             onOpenUpload={() => setIsUploadOpen(true)}
             onOpenRoomConfig={() => setIsRoomConfigOpen(true)}
@@ -396,12 +373,9 @@ export default function App() {
             onExportHtml={handleExportHtml}
             onExportExcel={handleExportExcel}
             onPrint={handlePrint}
-            onResetSample={handleResetToSample}
+            onClearData={handleClearData}
             searchTerm={searchTerm}
             onSearchChange={setSearchTerm}
-            zoomLevel={zoomLevel}
-            onZoomIn={() => setZoomLevel((prev) => Math.min(prev + 1, 2))}
-            onZoomOut={() => setZoomLevel((prev) => Math.max(prev - 1, 0))}
             totalTherapists={mergedTherapists.length}
             activeTherapistsCount={activeTherapists.length}
             totalAppointments={totalAppointmentsCount}
@@ -410,33 +384,81 @@ export default function App() {
             activeDay={activeDay}
             onSelectDay={setActiveDay}
             daysWithData={daysWithData}
+            hasAnyData={hasAnyData}
+            hasDayData={hasDayData}
+            exporting={exporting}
           />
         </div>
 
-        {/* Print Header only visible on paper/print */}
-        <div className="hidden print:block mb-2 pb-2 border-b-2 border-black">
-          <div className="flex justify-between items-start">
-            <div>
-              <h1 className="text-base font-black text-black uppercase tracking-tight">{report.clinic}</h1>
-              <p className="text-[11px] font-bold text-black mt-0.5">
-                AGENDA DE CONSULTAS E OCUPAÇÃO DE SALAS &bull; {report.date} ({report.dayOfWeek.toUpperCase()})
+        {/* Alerta de choque de horário */}
+        {dayConflictsList.length > 0 && (
+          <div className="overflow-hidden rounded-2xl border border-red-200 bg-white shadow-xs print:hidden">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-l-4 border-red-600 bg-red-50 px-4 py-2.5">
+              <h4 className="flex items-center gap-2 text-sm font-bold text-red-900">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-red-600 text-white">
+                  <AlertTriangle className="h-4 w-4" />
+                </span>
+                Choque de horário: {dayConflictsList.length} conflito(s) na {report.dayOfWeek}
+              </h4>
+              <button
+                onClick={() => setIsPatientSearchOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
+              >
+                <UserCheck className="h-3.5 w-3.5" />
+                Ver grade completa do paciente
+              </button>
+            </div>
+            <div className="px-4 py-2.5">
+              <p className="mb-2 text-xs text-slate-600">
+                O mesmo paciente está agendado simultaneamente para dois profissionais diferentes no mesmo horário (intervalo de 30 minutos):
               </p>
+              <div className="grid gap-1.5 md:grid-cols-2">
+                {dayConflictsList.map((c) => (
+                  <button
+                    key={c.key}
+                    onClick={() => setIsPatientSearchOpen(true)}
+                    className="flex flex-wrap items-center gap-2 rounded-lg border border-red-100 bg-white px-3 py-1.5 text-left text-xs hover:border-red-300 hover:bg-red-50"
+                  >
+                    <span className="inline-flex items-center gap-1 rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                      <Zap className="h-3 w-3 fill-current" />
+                      {c.slotTime}
+                    </span>
+                    <span className="font-bold text-red-950">{c.patientName}</span>
+                    <span className="text-[11px] text-slate-600">{c.description}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Cabeçalho apenas na impressão direta (Ctrl+P) */}
+        <div className="mb-2 hidden border-b-2 border-brand-700 pb-2 print:block">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <img src={LOGO_PATH} alt="Promédica" className="h-8 w-auto" />
+              <div>
+                <h1 className="text-base font-extrabold text-brand-800">
+                  {APP_NAME} · {APP_SUBTITLE}
+                </h1>
+                <p className="text-[11px] font-bold text-black">
+                  {report.dayOfWeek}
+                  {report.date ? ` · ${report.date}` : ''}
+                </p>
+              </div>
             </div>
             <div className="text-right text-[11px] font-bold text-black">
-              <div>{activeTherapists.length} SALAS ATIVAS &bull; {totalAppointmentsCount} ATENDIMENTOS</div>
-              <div className="text-[9.5px] font-semibold text-gray-700 mt-0.5">
+              <div>
+                {activeTherapists.length} SALAS · {totalAppointmentsCount} ATENDIMENTOS
+              </div>
+              <div className="mt-0.5 text-[9.5px] font-semibold text-gray-700">
                 Emissão: {new Date().toLocaleDateString('pt-BR')}
               </div>
             </div>
           </div>
-          {/* Clinical Print Legend */}
-          <div className="mt-1 flex items-center justify-between text-[8.5px] text-gray-700 bg-gray-100 p-1 rounded border border-gray-300">
-            <span><strong>LEGENDA:</strong> [Dupla = 2 Pacientes no horário] &bull; [Grupo = Mais que 2 Pacientes]</span>
-            <span className="font-bold text-red-700"><strong>(!)</strong> Choque = Paciente em dois atendimentos simultâneos</span>
-          </div>
         </div>
 
-        {/* The Spreadsheet Grid - Grade Padrão (30 min) */}
+        {/* Grade Padrão (30 min) */}
         <SpreadsheetGrid
           morningTimes={morningTimes}
           middayTimes={middayTimes}
@@ -447,22 +469,24 @@ export default function App() {
           onUpdateCellContent={handleUpdateCellContent}
           onUpdateTherapistHeader={handleUpdateTherapistHeader}
           onAddCustomTime={handleAddCustomTime}
-          zoomLevel={zoomLevel}
           showLunchPlaceholder={showLunchPlaceholder}
+          hasReport={hasDayData}
+          dayLabel={report.dayOfWeek}
+          onOpenUpload={() => setIsUploadOpen(true)}
+          onOpenRoomConfig={() => setIsRoomConfigOpen(true)}
         />
 
-        {/* Footer info and editing tip */}
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-gray-500 print:hidden">
-          <div className="flex items-center gap-1.5">
-            <Info className="h-3.5 w-3.5 text-gray-400" />
-            <span>
-              <strong>Edição rápida:</strong> Clique em qualquer nome de paciente, terapeuta ou sala para editar o texto no local.
-            </span>
+        {hasDayData && (
+          <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 print:hidden">
+            <div className="flex items-center gap-1.5">
+              <Info className="h-3.5 w-3.5 text-slate-400" />
+              <span>
+                <strong>Edição rápida:</strong> clique em qualquer paciente, terapeuta ou sala para editar no local.
+              </span>
+            </div>
+            <div>Grade padrão de 30 min · Relatórios PS120108</div>
           </div>
-          <div>
-            Grade Padrão Clínica 30 min &bull; Compatível com Oracle Reports e Promédica
-          </div>
-        </div>
+        )}
       </main>
 
       {/* Upload Modal */}

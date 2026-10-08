@@ -38,7 +38,7 @@ export const RoomConfigModal: React.FC<RoomConfigModalProps> = ({
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-bold text-gray-900">Configuração de Salas e Terapeutas</h2>
               {dayOfWeekLabel && (
-                <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-black text-emerald-800 border border-emerald-300">
+                <span className="rounded bg-brand-100 px-2 py-0.5 text-xs font-black text-brand-800 border border-brand-300">
                   {dayOfWeekLabel}
                 </span>
               )}
@@ -46,7 +46,7 @@ export const RoomConfigModal: React.FC<RoomConfigModalProps> = ({
             <p className="text-xs text-gray-500 mt-0.5">
               Personalize a numeração da sala, especialidade, ordem das colunas e visibilidade na planilha.
             </p>
-            <p className="text-[11px] font-medium text-emerald-700 mt-1 bg-emerald-50/70 p-1.5 rounded border border-emerald-200">
+            <p className="text-[11px] font-medium text-brand-700 mt-1 bg-brand-50/70 p-1.5 rounded border border-brand-200">
               ℹ️ <strong>Dias Separados:</strong> As salas não são vinculadas a profissionais fixos. Cada dia da semana possui sua própria grade de salas e terapeutas independentes.
             </p>
           </div>
@@ -97,7 +97,7 @@ export const RoomConfigModal: React.FC<RoomConfigModalProps> = ({
                         type="text"
                         value={therapist.roomName}
                         onChange={(e) => onUpdateTherapist(therapist.id, { roomName: e.target.value })}
-                        className="w-full rounded border border-gray-300 bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-900 focus:border-emerald-600 focus:outline-hidden"
+                        className="w-full rounded border border-gray-300 bg-brand-50 px-2 py-1 text-xs font-bold text-brand-900 focus:border-brand-600 focus:outline-hidden"
                         placeholder="SALA 1"
                       />
                     </div>
@@ -109,12 +109,12 @@ export const RoomConfigModal: React.FC<RoomConfigModalProps> = ({
                       type="text"
                       value={therapist.name}
                       onChange={(e) => onUpdateTherapist(therapist.id, { name: e.target.value })}
-                      className="w-full rounded border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-800 focus:border-emerald-500 focus:outline-hidden"
+                      className="w-full rounded border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-800 focus:border-brand-500 focus:outline-hidden"
                     />
                     <div className="mt-1 flex items-center gap-2 text-[11px] text-gray-500">
                       <span>Cód: {therapist.code || 'N/A'}</span>
                       <span>&bull;</span>
-                      <span className="font-medium text-emerald-700">
+                      <span className="font-medium text-brand-700">
                         {therapist.appointments.length} atendimentos
                       </span>
                     </div>
@@ -126,7 +126,7 @@ export const RoomConfigModal: React.FC<RoomConfigModalProps> = ({
                       type="text"
                       value={therapist.specialty}
                       onChange={(e) => onUpdateTherapist(therapist.id, { specialty: e.target.value })}
-                      className="w-full rounded border border-gray-300 bg-lime-50 px-2 py-1 text-xs font-medium text-lime-950 focus:border-lime-600 focus:outline-hidden"
+                      className="w-full rounded border border-gray-300 bg-accent-50 px-2 py-1 text-xs font-medium text-accent-700 focus:border-accent-600 focus:outline-hidden"
                       placeholder="ESPECIALIDADE"
                     />
                   </div>
@@ -136,7 +136,7 @@ export const RoomConfigModal: React.FC<RoomConfigModalProps> = ({
                     onClick={() => onToggleVisibility(therapist.id)}
                     className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                       isVisible
-                        ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                        ? 'bg-brand-100 text-brand-800 hover:bg-brand-200'
                         : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
                     }`}
                   >
@@ -168,7 +168,7 @@ export const RoomConfigModal: React.FC<RoomConfigModalProps> = ({
           </button>
           <button
             onClick={onClose}
-            className="flex items-center gap-1.5 rounded-lg bg-emerald-800 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-900"
+            className="flex items-center gap-1.5 rounded-lg bg-brand-800 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-brand-900"
           >
             <Check className="h-4 w-4" />
             <span>Concluir e Salvar</span>

@@ -329,3 +329,42 @@ export function findConflictsForPatient(
 
   return conflicts;
 }
+
+/**
+ * Para uma célula da grade, retorna quais pacientes estão em choque com OUTROS profissionais
+ * no mesmo intervalo de 30 min: nomeNormalizado -> descrição dos outros agendamentos.
+ * Usado pela grade na tela e pelas exportações (Excel / PDF / HTML).
+ */
+export function getConflictingPatientsForCell(
+  conflictsMap: Map<string, DayConflict>,
+  therapists: TherapistSchedule[],
+  therapistId: string,
+  time: string,
+  patientNames: string[],
+  rawText: string
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (!rawText) return result;
+
+  const currentTherapist = therapists.find((t) => t.id === therapistId);
+  const currentNormT = currentTherapist ? normalizeTherapistName(currentTherapist.name) : '';
+  const namesToCheck = patientNames.length > 0 ? patientNames : [rawText];
+
+  namesToCheck.forEach((name) => {
+    const norm = normalizePatientName(name);
+    if (!norm) return;
+    const conflict = conflictsMap.get(`${norm}__${time}`);
+    if (conflict) {
+      const otherBookings = conflict.bookings.filter((b) =>
+        currentNormT ? normalizeTherapistName(b.therapistName) !== currentNormT : b.therapistId !== therapistId
+      );
+      if (otherBookings.length > 0) {
+        result[norm] = otherBookings
+          .map((b) => `${b.roomName} (${b.therapistName}) às ${b.exactTime}`)
+          .join(' e ');
+      }
+    }
+  });
+
+  return result;
+}
