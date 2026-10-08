@@ -22,8 +22,14 @@ export interface ExportTableData {
   showLunchPlaceholder?: boolean;
 }
 
-/** Máximo de salas por página no PDF; acima disso o turno é dividido em mais páginas. */
-const MAX_ROOMS_PER_PAGE = 13;
+/**
+ * Máximo de salas por página no PDF; acima disso o turno é dividido em mais páginas.
+ * Mantido baixo para que o nome dos pacientes saia em tamanho legível na impressão.
+ */
+const MAX_ROOMS_PER_PAGE = 6;
+/** Tamanho inicial da fonte da tabela no PDF e o mínimo desejado (só reduz abaixo disso se não couber). */
+const PDF_FONT_PX = 11;
+const PDF_MIN_READABLE_FONT_PX = 9;
 
 // ---------------------------------------------------------------------------
 // Modelo comum (mesma análise de Dupla / Grupo / Alerta / Choque usada na grade)
@@ -230,19 +236,18 @@ function conflictsHtml(conflicts: DayConflict[]): string {
   if (conflicts.length === 0) {
     return `<div class="ok">✓ Nenhum choque de horário neste turno.</div>`;
   }
+  // Versão compacta: horário, paciente e salas envolvidas (o detalhe já aparece na célula da tabela)
   return `
     <div class="conflicts">
-      <div class="conflicts-title">⚡ ${conflicts.length} choque(s) de horário neste turno</div>
-      <ul>
-        ${conflicts
-          .map(
-            (c) =>
-              `<li><strong>${escapeHtml(c.slotTime)}</strong> — <strong>${escapeHtml(c.patientName)}</strong>: ${escapeHtml(
-                c.bookings.map((b) => `${b.roomName} (${b.therapistName}) às ${b.exactTime}`).join(' ⚡ ')
-              )}</li>`
-          )
-          .join('')}
-      </ul>
+      <span class="conflicts-title">⚡ ${conflicts.length} choque(s):</span>
+      ${conflicts
+        .map(
+          (c) =>
+            `<span class="ci"><strong>${escapeHtml(c.slotTime)}</strong> ${escapeHtml(c.patientName)} (${escapeHtml(
+              Array.from(new Set(c.bookings.map((b) => b.roomName))).join(' × ')
+            )})</span>`
+        )
+        .join('')}
     </div>`;
 }
 
@@ -285,7 +290,7 @@ const DOCUMENT_CSS = `
   td.c-dupla { background: ${BRAND.duplaBg}; }
   td.c-grupo { background: ${BRAND.grupoBg}; }
   td.c-choque { background: ${BRAND.choqueBg}; outline: 2px solid ${BRAND.choque}; outline-offset: -2px; }
-  .p { font-weight: 600; line-height: 1.2; }
+  .p { font-weight: 700; line-height: 1.2; color: #111; }
   .p + .p { margin-top: 2px; padding-top: 2px; border-top: 1px dashed rgba(0, 0, 0, .18); }
   .p-choque { color: ${BRAND.choqueDark}; font-weight: 800; }
   .t { font-weight: 500; color: ${BRAND.muted}; }
@@ -298,17 +303,17 @@ const DOCUMENT_CSS = `
   .b-choque { background: ${BRAND.choque}; color: #fff; border-color: ${BRAND.choqueDark}; }
   .alert { display: inline-flex; align-items: center; justify-content: center; width: 1.25em; height: 1.25em; border-radius: 50%;
     background: ${BRAND.choque}; color: #fff; font-size: .85em; font-weight: 900; margin-left: 2px; vertical-align: middle; }
-  .page-footer { margin-top: auto; display: flex; flex-direction: column; gap: 1.5mm; font-size: 8.5px; }
-  .page-footer .legend .b { font-size: 7.5px; }
-  .page-footer .legend .alert { font-size: 7px; }
-  .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 3mm; color: ${BRAND.text}; }
+  .page-footer { margin-top: auto; display: flex; flex-direction: column; gap: 1mm; font-size: 7.5px; }
+  .footer-row { display: flex; justify-content: space-between; align-items: center; gap: 4mm; color: ${BRAND.muted}; border-top: 1px solid ${BRAND.border}; padding-top: .8mm; }
+  .page-footer .legend .b { font-size: 6.5px; }
+  .page-footer .legend .alert { font-size: 6px; }
+  .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 2.5mm; color: ${BRAND.text}; }
   .legend > span { display: inline-flex; align-items: center; gap: 3px; }
-  .conflicts { border: 1.5px solid ${BRAND.choque}; background: ${BRAND.choqueBg}; border-radius: 4px; padding: 1.5mm 2.5mm; color: ${BRAND.choqueDark}; }
-  .conflicts-title { font-weight: 800; margin-bottom: .8mm; }
-  .conflicts ul { list-style: none; columns: 2; column-gap: 6mm; }
-  .conflicts li { break-inside: avoid; line-height: 1.35; }
+  .conflicts { display: flex; flex-wrap: wrap; gap: .6mm 3mm; border-left: 3px solid ${BRAND.choque}; background: ${BRAND.choqueBg};
+    padding: .8mm 2mm; color: ${BRAND.choqueDark}; line-height: 1.3; }
+  .conflicts-title { font-weight: 800; }
+  .conflicts .ci { white-space: nowrap; }
   .ok { color: ${BRAND.ok}; font-weight: 700; }
-  .footer-line { display: flex; justify-content: space-between; color: ${BRAND.muted}; border-top: 1px solid ${BRAND.border}; padding-top: 1mm; }
   @page { size: A4 landscape; margin: 0; }
   @media print {
     body { background: #fff; }
@@ -331,7 +336,7 @@ function buildPagesHtml(model: ScheduleModel, logoDataUrl: string | null): { htm
 
     roomChunks.forEach((rooms, chunkIdx) => {
       const n = rooms.length;
-      const fontPx = n <= 6 ? 10 : n <= 9 ? 9 : n <= 11 ? 8 : 7.5;
+      const fontPx = PDF_FONT_PX;
       const roomsLabel =
         roomChunks.length > 1
           ? `Salas ${chunkIdx + 1}/${roomChunks.length}: ${rooms[0].roomName} a ${rooms[n - 1].roomName}`
@@ -390,8 +395,7 @@ function buildPagesHtml(model: ScheduleModel, logoDataUrl: string | null): { htm
           </table>
           <div class="page-footer">
             ${conflictsHtml(shiftConflicts)}
-            ${legendHtml()}
-            <div class="footer-line"><span>${escapeHtml(APP_FULL_NAME)}</span><span>Emitido em ${escapeHtml(emittedAt)}</span></div>
+            <div class="footer-row">${legendHtml()}<span>Emitido em ${escapeHtml(emittedAt)}</span></div>
           </div>
         </section>`);
     });
@@ -418,7 +422,12 @@ const FIT_SCRIPT = `
         - (header ? header.offsetHeight : 0) - (footer ? footer.offsetHeight : 0) - gap * 2 - 2;
       var fs = parseFloat(table.getAttribute('data-fs'));
       table.style.fontSize = fs + 'px';
-      while (table.offsetHeight > avail && fs > 4.5) {
+      // Reduz até o mínimo legível; abaixo disso, só se ainda não couber na folha
+      while (table.offsetHeight > avail && fs > ${PDF_MIN_READABLE_FONT_PX}) {
+        fs -= 0.25;
+        table.style.fontSize = fs + 'px';
+      }
+      while (table.offsetHeight > avail && fs > 6) {
         fs -= 0.25;
         table.style.fontSize = fs + 'px';
       }
