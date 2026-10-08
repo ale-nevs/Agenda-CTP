@@ -8,7 +8,7 @@ import { PatientScheduleModal } from './components/PatientScheduleModal';
 import { exportStandaloneHtml, exportExcel, exportPdf, ExportTableData } from './utils/exportUtils';
 import { findScheduleConflictsForDay, getAllDayConflicts } from './utils/conflictUtils';
 import { APP_NAME, APP_SUBTITLE, LOGO_PATH, handleLogoError } from './brand';
-import { Calendar, Info, AlertTriangle, Zap, UserCheck } from 'lucide-react';
+import { Calendar, Info, AlertTriangle, Zap } from 'lucide-react';
 
 const EMPTY_WEEKLY_REPORTS: Record<DayOfWeekKey, ParsedReport | null> = {
   SEGUNDA: null,
@@ -22,7 +22,7 @@ const EMPTY_WEEKLY_REPORTS: Record<DayOfWeekKey, ParsedReport | null> = {
 function emptyReportFor(day: DayOfWeekKey): ParsedReport {
   return {
     title: 'AGENDA DE CONSULTAS - DISTRIBUIÇÃO POR SALAS',
-    clinic: `${APP_NAME} · ${APP_SUBTITLE}`,
+    clinic: '',
     period: '',
     date: '',
     dayOfWeek: DAYS_OF_WEEK.find((d) => d.key === day)?.fullLabel || day,
@@ -50,6 +50,11 @@ export default function App() {
 
   const report = useMemo<ParsedReport>(() => {
     return weeklyReports[activeDay] || emptyReportFor(activeDay);
+  }, [weeklyReports, activeDay]);
+
+  // Nome do centro de terapias identificado nos arquivos enviados
+  const clinicName = useMemo(() => {
+    return weeklyReports[activeDay]?.clinic || Object.values(weeklyReports).find((r) => r?.clinic)?.clinic || '';
   }, [weeklyReports, activeDay]);
 
   // Per-day isolated overrides so switching days does not freeze or pollute rooms
@@ -288,7 +293,7 @@ export default function App() {
   // Export handlers
   const getExportData = (): ExportTableData => ({
     title: report.title,
-    clinic: report.clinic,
+    clinic: clinicName,
     date: report.date,
     dayOfWeek: report.dayOfWeek,
     morningTimes,
@@ -330,7 +335,9 @@ export default function App() {
             <div className="hidden h-9 w-px bg-slate-200 sm:block" />
             <div>
               <h1 className="text-lg font-extrabold leading-tight tracking-tight text-brand-800">{APP_NAME}</h1>
-              <p className="text-xs font-semibold uppercase tracking-wider text-accent-600">{APP_SUBTITLE}</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-accent-600" title={clinicName ? 'Identificado no arquivo enviado' : undefined}>
+                {clinicName || APP_SUBTITLE}
+              </p>
             </div>
           </div>
 
@@ -397,7 +404,7 @@ export default function App() {
               <img src={LOGO_PATH} onError={handleLogoError} alt="Promédica" className="h-8 w-auto" />
               <div>
                 <h1 className="text-base font-extrabold text-brand-800">
-                  {APP_NAME} · {APP_SUBTITLE}
+                  {APP_NAME} · {clinicName || APP_SUBTITLE}
                 </h1>
                 <p className="text-[11px] font-bold text-black">
                   {report.dayOfWeek}
@@ -444,13 +451,6 @@ export default function App() {
                 </span>
                 Choque de horário: {dayConflictsList.length} conflito(s) na {report.dayOfWeek}
               </h4>
-              <button
-                onClick={() => setIsPatientSearchOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
-              >
-                <UserCheck className="h-3.5 w-3.5" />
-                Ver grade completa do paciente
-              </button>
             </div>
             <div className="px-4 py-2.5">
               <p className="mb-2 text-xs text-slate-600">
@@ -458,10 +458,9 @@ export default function App() {
               </p>
               <div className="grid gap-1.5 md:grid-cols-2">
                 {dayConflictsList.map((c) => (
-                  <button
+                  <div
                     key={c.key}
-                    onClick={() => setIsPatientSearchOpen(true)}
-                    className="flex flex-wrap items-center gap-2 rounded-lg border border-red-100 bg-white px-3 py-1.5 text-left text-xs hover:border-red-300 hover:bg-red-50"
+                    className="flex flex-wrap items-center gap-2 rounded-lg border border-red-100 bg-white px-3 py-1.5 text-left text-xs"
                   >
                     <span className="inline-flex items-center gap-1 rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
                       <Zap className="h-3 w-3 fill-current" />
@@ -469,7 +468,7 @@ export default function App() {
                     </span>
                     <span className="font-bold text-red-950">{c.patientName}</span>
                     <span className="text-[11px] text-slate-600">{c.description}</span>
-                  </button>
+                  </div>
                 ))}
               </div>
             </div>

@@ -35,6 +35,30 @@ export function normalizeDayOfWeek(str: string): DayOfWeekKey {
   return 'SEGUNDA';
 }
 
+/**
+ * Reconhece o nome do centro de terapias / clínica no texto do relatório
+ * (ex.: "CENTRO DE TERAPIAS PROMEDICA - GARIBALDI").
+ */
+export function detectClinicName(text: string): string | null {
+  const clean = (text || '').replace(/\s+/g, ' ').trim();
+  if (!clean || clean.length > 120) return null;
+  if (/CENTRO\s+D[EOA]S?\s+TERAPIA/i.test(clean) || /^CL[IÍ]NICA\b/i.test(clean)) {
+    return clean.toUpperCase();
+  }
+  return null;
+}
+
+/**
+ * Uma mesma profissional pode atender Fono convencional e Fono Prompt (ou TO e TO Ayres).
+ * Nesse caso a especialidade da sala mostra as duas, ex.: "FONOAUDIOLOGO + PROMPT".
+ */
+export function combineProtocolSpecialty(specs: string[], primary: string): string {
+  const set = new Set(specs);
+  if (set.has('FONO PROMPT') && set.has('FONOAUDIOLOGO')) return 'FONOAUDIOLOGO + PROMPT';
+  if (set.has('TO AYRES') && set.has('TERAPIA OCUPACIONAL')) return 'TERAPIA OCUPACIONAL + AYRES';
+  return primary;
+}
+
 // Map service names to clean standardized Brazilian clinical specialties
 export function normalizeSpecialty(service: string): string {
   if (!service) return 'ESPECIALIDADE';
@@ -93,7 +117,7 @@ export function parseOracleReportsHtml(htmlContent: string, fileNameHint?: strin
   const therapists: TherapistSchedule[] = [];
   let reportDate = '16/09/2026';
   let reportDayOfWeek = '';
-  let clinicName = 'CENTRO DE TERAPIAS PROMEDICA - GARIBALDI';
+  let clinicName = '';
   let periodStr = '';
 
   // Extract date and day of week from overall HTML text if present
@@ -115,8 +139,10 @@ export function parseOracleReportsHtml(htmlContent: string, fileNameHint?: strin
     // Extract clinic title & period
     const f2Elements = Array.from(pageDoc.querySelectorAll('[id=f2], span, div')).map(el => el.textContent?.trim() || '');
     for (const text of f2Elements) {
-      if (text.includes('CENTRO DE TERAPIAS')) {
-        clinicName = text;
+      const detected = detectClinicName(text);
+      // Prefere o texto mais curto (o elemento exato do título, e não um contêiner maior)
+      if (detected && (!clinicName || detected.length < clinicName.length)) {
+        clinicName = detected;
       }
       if (text.includes('AGENDA DE CONSULTAS')) {
         periodStr = text;
@@ -296,7 +322,7 @@ export function parseOracleReportsHtml(htmlContent: string, fileNameHint?: strin
       }
     }
     if (primarySpec) {
-      therapist.specialty = primarySpec;
+      therapist.specialty = combineProtocolSpecialty(Object.keys(specialtyCount), primarySpec);
     }
     therapist.totalAppointments = therapist.appointments.length;
   });
@@ -425,14 +451,15 @@ export function parseReportText(text: string): ParsedReport {
   let currentTherapistCode = '';
   let reportDate = '16/09/2026';
   let reportDayOfWeek = 'Quarta-Feira';
-  let clinicName = 'CENTRO DE TERAPIAS PROMEDICA - GARIBALDI';
+  let clinicName = '';
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
     // Clinic name
-    if (line.includes('CENTRO DE TERAPIAS')) {
-      clinicName = line;
+    const detectedClinic = detectClinicName(line);
+    if (detectedClinic && !clinicName) {
+      clinicName = detectedClinic;
     }
 
     // Date
@@ -548,7 +575,7 @@ export function parseReportText(text: string): ParsedReport {
         if (a.specialty) specFreq[a.specialty] = (specFreq[a.specialty] || 0) + 1;
       });
       const topSpec = Object.entries(specFreq).sort((a, b) => b[1] - a[1])[0];
-      if (topSpec) t.specialty = topSpec[0];
+      if (topSpec) t.specialty = combineProtocolSpecialty(Object.keys(specFreq), topSpec[0]);
     }
   });
 

@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { ParsedReport, DayOfWeekKey, DAYS_OF_WEEK } from '../types';
 import { getIntervalSlot, normalizePatientName, normalizeTherapistName } from '../utils/conflictUtils';
-import { APP_FULL_NAME, BRAND, FONT_FAMILY, logoImgHtml } from '../brand';
+import { APP_FULL_NAME, APP_NAME, APP_SUBTITLE, BRAND, FONT_FAMILY, logoImgHtml } from '../brand';
 import { triggerDownload } from '../utils/exportUtils';
 import { therapyColor } from '../utils/therapyColors';
 
@@ -32,6 +32,8 @@ interface ProfessionalSummary {
   sessions: number;
   minutes: number;
   days: DayOfWeekKey[];
+  /** Em Fono / TO: quanto desta profissional é Prompt/Ayres e quanto é convencional */
+  breakdown?: { label: string; sessions: number; minutes: number }[];
 }
 
 interface TherapyBreakdown {
@@ -99,7 +101,10 @@ function computeTherapySummary(
   const norm = normalizePatientName(patientName);
   const days = scope === 'SEMANA' ? DAYS_OF_WEEK.map((d) => d.key) : [scope];
 
-  const bySpecialty = new Map<string, Map<string, { name: string; slots: Set<string>; days: Set<DayOfWeekKey> }>>();
+  const bySpecialty = new Map<
+    string,
+    Map<string, { name: string; slots: Set<string>; days: Set<DayOfWeekKey>; protocol: Set<string>; conventional: Set<string> }>
+  >();
   const protocolSlots = new Map<string, { protocol: Set<string>; conventional: Set<string> }>();
 
   days.forEach((day) => {
@@ -113,10 +118,13 @@ function computeTherapySummary(
         const slotKey = `${day}|${getIntervalSlot(a.time)}`;
         if (!bySpecialty.has(group)) bySpecialty.set(group, new Map());
         const profs = bySpecialty.get(group)!;
-        if (!profs.has(profKey)) profs.set(profKey, { name: t.name, slots: new Set(), days: new Set() });
+        if (!profs.has(profKey)) {
+          profs.set(profKey, { name: t.name, slots: new Set(), days: new Set(), protocol: new Set(), conventional: new Set() });
+        }
         const prof = profs.get(profKey)!;
         prof.slots.add(slotKey);
         prof.days.add(day);
+        (isProtocol ? prof.protocol : prof.conventional).add(slotKey);
 
         if (PROTOCOL_LABEL[group]) {
           if (!protocolSlots.has(group)) protocolSlots.set(group, { protocol: new Set(), conventional: new Set() });
@@ -136,6 +144,12 @@ function computeTherapySummary(
           sessions: p.slots.size,
           minutes: p.slots.size * SESSION_MINUTES,
           days: Array.from(p.days).sort((x, y) => dayOrder.indexOf(x) - dayOrder.indexOf(y)),
+          breakdown: PROTOCOL_LABEL[specialty]
+            ? [
+                { label: PROTOCOL_LABEL[specialty], sessions: p.protocol.size, minutes: p.protocol.size * SESSION_MINUTES },
+                { label: CONVENTIONAL_LABEL, sessions: p.conventional.size, minutes: p.conventional.size * SESSION_MINUTES },
+              ].filter((b) => b.sessions > 0)
+            : undefined,
         }))
         .sort((x, y) => y.sessions - x.sessions || x.name.localeCompare(y.name));
       const sessions = professionals.reduce((sum, p) => sum + p.sessions, 0);
@@ -318,7 +332,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
 
       // Detect clinical alert for Fono Prompt or TO Ayres when in dupla or grupo
       const patientList = matchingAppointments.map((a) => {
-        const spec = (matchingTherapist.specialty || a.specialty || '').toUpperCase();
+        const spec = (a.specialty || matchingTherapist.specialty || '').toUpperCase();
         const sRaw = (a.serviceRaw || '').toUpperCase();
         const isPromptOrAyres = (isDupla || isGrupo) && (
           spec.includes('PROMPT') || spec.includes('AYRES') ||
@@ -334,7 +348,8 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
       const hasClinicalAlert = patientList.some((p) => p.isPromptOrAyres);
 
       let therapistName = matchingTherapist.name;
-      let specialty = matchingTherapist.specialty || matchingAppointments[0].specialty || 'ESPECIALIDADE';
+      // Especialidade do atendimento deste paciente (a mesma profissional pode atender convencional e Prompt/Ayres)
+      let specialty = firstBooking.patientApp.specialty || matchingTherapist.specialty || 'ESPECIALIDADE';
       let agendaText = '';
       let roomName = matchingTherapist.roomName;
 
@@ -346,7 +361,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
           bookings: matchingBookings.map((b) => ({
             therapistName: b.therapist.name,
             roomName: b.therapist.roomName,
-            specialty: b.therapist.specialty || b.patientApp.specialty || '',
+            specialty: b.patientApp.specialty || b.therapist.specialty || '',
             time: b.patientApp.time,
           })),
           description: matchingBookings
@@ -361,7 +376,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
         specialty = Array.from(
           new Set(
             matchingBookings
-              .map((b) => b.therapist.specialty || b.patientApp.specialty)
+              .map((b) => b.patientApp.specialty || b.therapist.specialty)
               .filter(Boolean)
           )
         ).join(' / ');
@@ -481,6 +496,12 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
     }
   }, [selectedPatient, selectedDay, currentSchedule, weeklyReports]);
 
+  // Nome do centro de terapias identificado nos arquivos (para a impressão)
+  const printClinicName = useMemo(
+    () => Object.values(weeklyReports).find((r) => r?.clinic)?.clinic || '',
+    [weeklyReports]
+  );
+
   // Quantidade de horas por terapia e profissionais (dia selecionado ou semana)
   const therapySummary = useMemo(
     () => computeTherapySummary(weeklyReports, selectedPatient, selectedDay),
@@ -501,7 +522,10 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
     text += `ESPECIALIDADE\tSESSÕES\tCARGA HORÁRIA\tPROFISSIONAIS\n`;
     therapySummary.forEach((t) => {
       const profs = t.professionals
-        .map((p) => `${p.name} (${p.sessions} sessões · ${formatMinutes(p.minutes)} · ${p.days.map(dayShortLabel).join(', ')})`)
+        .map((p) => {
+          const split = p.breakdown && p.breakdown.length > 0 ? ` · ${p.breakdown.map((b) => `${formatMinutes(b.minutes)} ${b.label}`).join(' / ')}` : '';
+          return `${p.name} (${p.sessions} sessões · ${formatMinutes(p.minutes)}${split} · ${p.days.map(dayShortLabel).join(', ')})`;
+        })
         .join('; ');
       const specialtyLabel = t.breakdown ? `${t.specialty} (${breakdownText(t)})` : t.specialty;
       text += `${specialtyLabel}\t${t.sessions}\t${formatMinutes(t.minutes)}\t${profs}\n`;
@@ -538,7 +562,11 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
               <td>${t.professionals
                 .map(
                   (p) =>
-                    `<div><strong>${p.name}</strong> — ${p.sessions} sessão(ões) · ${formatMinutes(p.minutes)} · ${p.days
+                    `<div><strong>${p.name}</strong> — ${p.sessions} sessão(ões) · ${formatMinutes(p.minutes)}${
+                      p.breakdown && p.breakdown.length > 0
+                        ? ` (${p.breakdown.map((b) => `${formatMinutes(b.minutes)} ${b.label}`).join(' · ')})`
+                        : ''
+                    } · ${p.days
                       .map(dayShortLabel)
                       .join(', ')}</div>`
                 )
@@ -618,7 +646,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
     const font = 'Arial';
     const argb = (hex: string) => `FF${hex.replace('#', '').toUpperCase()}`;
     const fill = (hex: string) => ({ type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: argb(hex) } });
-    const thin = { style: 'thin' as const, color: { argb: argb(BRAND.border) } };
+    const thin = { style: 'thin' as const, color: { argb: argb(BRAND.gridLine) } };
     const border = { top: thin, left: thin, bottom: thin, right: thin };
 
     type ScheduleRow = ReturnType<typeof getDaySchedule>[number];
@@ -749,7 +777,15 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
       });
       t.professionals.forEach((p) => {
         styleRow(
-          sws.addRow(['', p.name, p.sessions, formatMinutes(p.minutes), p.days.map(dayShortLabel).join(', ')]),
+          sws.addRow([
+            '',
+            p.breakdown && p.breakdown.length > 0
+              ? `${p.name} (${p.breakdown.map((b) => `${formatMinutes(b.minutes)} ${b.label}`).join(' · ')})`
+              : p.name,
+            p.sessions,
+            formatMinutes(p.minutes),
+            p.days.map(dayShortLabel).join(', '),
+          ]),
           BRAND.foundBg
         );
       });
@@ -801,7 +837,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
 
       bodyHtml = `
         <div class="header">
-<div class="brandbar">${logoImgHtml()}<div><div class="app">${APP_FULL_NAME}</div><h1>GRADE DO PACIENTE</h1></div></div>
+<div class="brandbar">${logoImgHtml()}<div><div class="app">${APP_NAME} · ${printClinicName || APP_SUBTITLE}</div><h1>GRADE DO PACIENTE</h1></div></div>
           <p><strong>PACIENTE:</strong> ${selectedPatient}</p>
           <p><strong>DIA:</strong> ${selectedDay} &bull; <strong>TOTAL DE ATENDIMENTOS:</strong> ${count}</p>
           <div class="legend">
@@ -871,7 +907,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
       // Full week printing
       bodyHtml = `
         <div class="header">
-<div class="brandbar">${logoImgHtml()}<div><div class="app">${APP_FULL_NAME}</div><h1>GRADE SEMANAL DO PACIENTE</h1></div></div>
+<div class="brandbar">${logoImgHtml()}<div><div class="app">${APP_NAME} · ${printClinicName || APP_SUBTITLE}</div><h1>GRADE SEMANAL DO PACIENTE</h1></div></div>
           <p><strong>PACIENTE:</strong> ${selectedPatient}</p>
           <div class="legend">
             <strong>LEGENDA:</strong> 
@@ -946,7 +982,7 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
     if (viewMode === 'resumo') {
       bodyHtml = `
         <div class="header">
-          <div class="brandbar">${logoImgHtml()}<div><div class="app">${APP_FULL_NAME}</div><h1>QUANTIDADE / PROFISSIONAIS</h1></div></div>
+          <div class="brandbar">${logoImgHtml()}<div><div class="app">${APP_NAME} · ${printClinicName || APP_SUBTITLE}</div><h1>QUANTIDADE / PROFISSIONAIS</h1></div></div>
           <p><strong>PACIENTE:</strong> ${selectedPatient}</p>
           <p><strong>PERÍODO:</strong> ${scopeLabel} &bull; <strong>SESSÕES DE ${SESSION_MINUTES} MIN</strong></p>
         </div>
@@ -1273,6 +1309,11 @@ export const PatientScheduleModal: React.FC<PatientScheduleModalProps> = ({
                                       <span className="rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-bold text-brand-800">
                                         {p.sessions} sessão(ões) · {formatMinutes(p.minutes)}
                                       </span>
+                                      {p.breakdown && p.breakdown.length > 0 && (
+                                        <span className="rounded bg-accent-50 px-1.5 py-0.5 text-[10px] font-semibold text-accent-700">
+                                          {p.breakdown.map((b) => `${formatMinutes(b.minutes)} ${b.label}`).join(' · ')}
+                                        </span>
+                                      )}
                                       <span className="text-[10px] font-medium text-gray-500">{p.days.map(dayShortLabel).join(', ')}</span>
                                     </div>
                                   ))}

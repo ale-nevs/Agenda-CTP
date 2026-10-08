@@ -28,6 +28,14 @@ export const PatientCellDisplay: React.FC<PatientCellDisplayProps> = ({
     return (
       <div className="flex items-center justify-between gap-1 min-h-[16px] leading-tight text-gray-900 font-semibold">
         <span className="whitespace-normal break-words">{patientName}</span>
+        {patient?.isPromptOrAyres && !otherConflict && (
+          <span
+            className="shrink-0 rounded border border-[#8fb3e0] bg-[#dde9f7] px-1 py-0.5 text-[8.5px] font-bold uppercase text-[#1d4f91]"
+            title={`Atendimento ${patient.alertType === 'TO AYRES' ? 'TO Ayres' : 'Fono Prompt'}`}
+          >
+            {patient.alertType === 'TO AYRES' ? 'Ayres' : 'Prompt'}
+          </span>
+        )}
         {otherConflict && (
           <span
             className="inline-flex items-center gap-0.5 rounded bg-red-600 text-white px-1.5 py-0.5 text-[9px] font-black border border-red-700 shadow-2xs shrink-0 cursor-help animate-pulse"
