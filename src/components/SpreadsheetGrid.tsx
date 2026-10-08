@@ -190,8 +190,8 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     );
   }
 
-  const stickyTimeCell = 'sticky left-0 z-10 w-[68px] min-w-[68px] max-w-[68px] border border-slate-200';
-  const stickyHeadCell = 'sticky left-0 z-30 w-[68px] min-w-[68px] max-w-[68px] border border-slate-200';
+  const stickyTimeCell = 'sticky left-0 z-10 w-[68px] min-w-[68px] max-w-[68px] border border-black';
+  const stickyHeadCell = 'sticky left-0 z-30 w-[68px] min-w-[68px] max-w-[68px] border border-black';
 
   const headerRow = (
     field: 'roomName' | 'name' | 'specialty',
@@ -209,7 +209,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
         return (
           <th
             key={`${keyPrefix}-${therapist.id}`}
-            className={`border border-slate-200 py-1.5 px-1.5 text-center font-bold ${rowClass}`}
+            className={`border border-black py-1.5 px-1.5 text-center font-bold ${rowClass}`}
             style={{
               width: ROOM_COL_WIDTH,
               minWidth: ROOM_COL_WIDTH,
@@ -295,7 +295,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     return (
       <td
         key={`cell-${therapist.id}-${time}`}
-        className={`relative border border-slate-200 py-1 px-1.5 align-middle transition-colors ${cellBgClass}`}
+        className={`relative border border-black py-1 px-1.5 align-middle transition-colors ${cellBgClass}`}
         onClick={() => !isEditing && startEditCell(therapist.id, time)}
         title={cellTooltip}
       >
@@ -349,7 +349,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     <td
       key={`empty-${therapist.id}-${times[0]}`}
       rowSpan={times.length}
-      className="cursor-pointer border border-slate-200 bg-slate-50 align-middle text-center text-[1.05em] font-bold tracking-[0.2em] text-slate-400 transition-colors hover:bg-slate-100"
+      className="cursor-pointer border border-black bg-slate-50 align-middle text-center text-[1.05em] font-bold tracking-[0.2em] text-slate-400 transition-colors hover:bg-slate-100"
       onClick={() => startEditCell(therapist.id, times[0])}
       title="Nenhum paciente neste turno - clique para adicionar"
     >
@@ -411,7 +411,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
           </button>
         )}
       </td>
-      <td colSpan={activeTherapists.length} className="border border-slate-200 bg-slate-50/50 py-0.5 pl-3 text-left text-[10px] italic text-slate-400">
+      <td colSpan={activeTherapists.length} className="border border-black bg-slate-50/50 py-0.5 pl-3 text-left text-[10px] italic text-slate-400">
         {showAddTimePrompt === period ? hint : ''}
       </td>
     </tr>
@@ -478,9 +478,9 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
           style={{ zoom, width: naturalTableWidth, tableLayout: 'fixed' }}
         >
           <thead className="sticky top-0 z-20">
-            {headerRow('roomName', 'SALA', 'bg-brand-700 text-white tracking-wider', true, 'sala', stickyHeadCell)}
-            {headerRow('name', 'TERAPEUTA', 'bg-brand-100 text-brand-900', true, 'name', stickyHeadCell)}
-            {headerRow('specialty', 'HORÁRIO', 'bg-accent-50 text-accent-800', true, 'spec', stickyHeadCell)}
+            {headerRow('roomName', 'SALA', 'bg-[#1d4f91] text-white tracking-wider', true, 'sala', stickyHeadCell)}
+            {headerRow('name', 'TERAPEUTA', 'bg-[#8fb3e0] text-[#0f2747]', true, 'name', stickyHeadCell)}
+            {headerRow('specialty', 'HORÁRIO', 'bg-[#dde9f7] text-[#1d4f91]', true, 'spec', stickyHeadCell)}
           </thead>
 
           <tbody>
@@ -496,8 +496,8 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
             )}
 
             {/* Cabeçalhos repetidos para o turno da tarde */}
-            {headerRow('name', 'TERAPEUTA', 'bg-brand-100 text-brand-900', false, 'pm-name', stickyTimeCell)}
-            {headerRow('specialty', 'HORÁRIO', 'bg-accent-50 text-accent-800', false, 'pm-spec', stickyTimeCell)}
+            {headerRow('name', 'TERAPEUTA', 'bg-[#8fb3e0] text-[#0f2747]', false, 'pm-name', stickyTimeCell)}
+            {headerRow('specialty', 'HORÁRIO', 'bg-[#dde9f7] text-[#1d4f91]', false, 'pm-spec', stickyTimeCell)}
 
             {timeRows(afternoonTimes, 'afternoon')}
             {addTimeRow('afternoon', 'Hora', 'Inserir horário personalizado de tarde', 'Pressione Enter para adicionar horário de tarde')}

@@ -26,6 +26,12 @@ export const BRAND = {
   secondary: '#17786B', // verde-azulado (teal) — indicadores e ações secundárias
   secondaryLight: '#E3F2EF', // linha de especialidade
   secondaryText: '#155F56',
+  // Cabeçalhos da planilha: azul forte (SALA), azul médio (TERAPEUTA) e azul fraco (HORÁRIO / especialidade)
+  headerSala: '#1D4F91',
+  headerTerapeuta: '#8FB3E0',
+  headerEspecialidade: '#DDE9F7',
+  headerText: '#0F2747',
+  gridLine: '#000000',
   logoRed: '#BC1118', // vermelho Promédica: usado apenas na logo
   accent: '#17786B',
   ok: '#15803D',

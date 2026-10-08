@@ -33,6 +33,7 @@ interface CellPatient {
   name: string;
   exactTime?: string;
   isPromptOrAyres: boolean;
+  protocolLabel?: string;
   conflictWith?: string;
 }
 
@@ -83,6 +84,7 @@ function buildScheduleModel(data: ExportTableData): ScheduleModel {
       name: p.name,
       exactTime: p.exactTime,
       isPromptOrAyres: p.isPromptOrAyres,
+      protocolLabel: p.isPromptOrAyres ? (p.alertType === 'TO AYRES' ? 'Ayres' : 'Prompt') : undefined,
       conflictWith: conflicting[normalizePatientName(p.name)],
     }));
     return {
@@ -198,11 +200,12 @@ function renderCellHtml(c: CellModel): { cls: string; html: string } {
   const patientsHtml = c.patients
     .map((p) => {
       const alert = p.isPromptOrAyres && multiple ? '<span class="alert" title="Fono Prompt / TO Ayres">!</span>' : '';
+      const proto = !multiple && p.protocolLabel ? ` <span class="b b-proto">${p.protocolLabel}</span>` : '';
       const time = multiple && p.exactTime ? ` <span class="t">(${escapeHtml(p.exactTime)})</span>` : '';
       const conflict = p.conflictWith
         ? `<div class="cw">⚡ também em ${escapeHtml(p.conflictWith)}</div>`
         : '';
-      return `<div class="p${p.conflictWith ? ' p-choque' : ''}">${escapeHtml(p.name)}${time}${alert}${conflict}</div>`;
+      return `<div class="p${p.conflictWith ? ' p-choque' : ''}">${escapeHtml(p.name)}${time}${alert}${proto}${conflict}</div>`;
     })
     .join('');
 
@@ -266,12 +269,12 @@ const DOCUMENT_CSS = `
   .meta { text-align: right; font-size: 9px; color: ${BRAND.muted}; line-height: 1.4; }
   .meta strong { color: ${BRAND.text}; }
   table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  th, td { border: 1px solid #b4bbc6; padding: 2px 3px; vertical-align: middle; word-wrap: break-word; overflow-wrap: anywhere; }
+  th, td { border: 1px solid ${BRAND.gridLine}; padding: 2px 3px; vertical-align: middle; word-wrap: break-word; overflow-wrap: anywhere; }
   col.c-time { width: 14mm; }
   thead th { text-align: center; font-weight: 800; }
-  tr.h-sala th { background: ${BRAND.primary}; color: #fff; letter-spacing: .3px; }
-  tr.h-terapeuta th { background: ${BRAND.primaryLight}; color: ${BRAND.primaryDarker}; }
-  tr.h-especialidade th { background: ${BRAND.secondaryLight}; color: ${BRAND.secondaryText}; }
+  tr.h-sala th { background: ${BRAND.headerSala}; color: #fff; letter-spacing: .3px; }
+  tr.h-terapeuta th { background: ${BRAND.headerTerapeuta}; color: ${BRAND.headerText}; }
+  tr.h-especialidade th { background: ${BRAND.headerEspecialidade}; color: ${BRAND.headerSala}; }
   th.corner { font-size: .72em; letter-spacing: -.2px; padding: 2px 1px; }
   tbody td.time { text-align: center; font-weight: 800; background: ${BRAND.primarySoft}; color: ${BRAND.primaryDarker}; }
   tbody tr { page-break-inside: avoid; break-inside: avoid; }
@@ -291,6 +294,7 @@ const DOCUMENT_CSS = `
   .b { display: inline-block; font-size: .8em; font-weight: 800; padding: 0 3px; border-radius: 3px; border: 1px solid; line-height: 1.4; white-space: nowrap; }
   .b-dupla { background: ${BRAND.duplaBadge}; color: ${BRAND.duplaText}; border-color: ${BRAND.duplaBorder}; }
   .b-grupo { background: ${BRAND.grupoBadge}; color: ${BRAND.grupoText}; border-color: ${BRAND.grupoBorder}; }
+  .b-proto { background: ${BRAND.headerEspecialidade}; color: ${BRAND.headerSala}; border-color: ${BRAND.headerTerapeuta}; }
   .b-choque { background: ${BRAND.choque}; color: #fff; border-color: ${BRAND.choqueDark}; }
   .alert { display: inline-flex; align-items: center; justify-content: center; width: 1.25em; height: 1.25em; border-radius: 50%;
     background: ${BRAND.choque}; color: #fff; font-size: .85em; font-weight: 900; margin-left: 2px; vertical-align: middle; }
@@ -367,7 +371,7 @@ function buildPagesHtml(model: ScheduleModel, logoDataUrl: string | null): { htm
             <div class="brand">
               ${logoDataUrl ? `<img src="${logoDataUrl}" alt="Promédica" />` : ''}
               <div>
-                <h1>${escapeHtml(APP_NAME)} <span>· ${escapeHtml(APP_SUBTITLE)}</span></h1>
+                <h1>${escapeHtml(APP_NAME)} <span>· ${escapeHtml(data.clinic || APP_SUBTITLE)}</span></h1>
                 <div class="sub"><span class="shift-tag">${escapeHtml(shift.label.toUpperCase())}</span>${escapeHtml(
                   data.dayOfWeek
                 )} · ${escapeHtml(data.date)} · ${escapeHtml(shift.rangeLabel)}</div>
@@ -435,7 +439,7 @@ async function buildDocumentHtml(data: ExportTableData, options: { withToolbar: 
   const toolbar = options.withToolbar
     ? `<div class="toolbar">
         <div>
-          <div class="tb-title">${escapeHtml(APP_FULL_NAME)}</div>
+          <div class="tb-title">${escapeHtml(APP_NAME)} · ${escapeHtml(data.clinic || APP_SUBTITLE)}</div>
           <div class="tb-sub">${escapeHtml(data.dayOfWeek)} · ${escapeHtml(data.date)} · ${pageCount} página(s) · ${
             model.conflicts.length
           } choque(s)</div>
@@ -543,6 +547,7 @@ function cellText(c: CellModel): string {
     let line = multiple ? `• ${p.name}` : p.name;
     if (multiple && p.exactTime) line += ` (${p.exactTime})`;
     if (p.isPromptOrAyres && multiple) line += ' (!)';
+    if (!multiple && p.protocolLabel) line += ` [${p.protocolLabel.toUpperCase()}]`;
     if (p.conflictWith) line += ' ⚡';
     lines.push(line);
   });
@@ -578,7 +583,7 @@ export async function exportExcel(data: ExportTableData) {
   ws.columns = [{ width: 9 }, ...rooms.map(() => ({ width: 34 }))];
 
   const font = 'Arial';
-  const thin = { style: 'thin' as const, color: { argb: 'FF6B7A90' } };
+  const thin = { style: 'thin' as const, color: { argb: argb(BRAND.gridLine) } };
   const border = { top: thin, left: thin, bottom: thin, right: thin };
   const fill = (hex: string) => ({ type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: argb(hex) } });
 
@@ -590,7 +595,7 @@ export async function exportExcel(data: ExportTableData) {
   ws.mergeCells(1, titleCol, 1, Math.max(titleCol, nCols));
   ws.mergeCells(2, titleCol, 2, Math.max(titleCol, nCols));
   const t1 = ws.getCell(1, titleCol);
-  t1.value = `${APP_NAME} · ${APP_SUBTITLE}`;
+  t1.value = `${APP_NAME} · ${data.clinic || APP_SUBTITLE}`;
   t1.font = { name: font, size: 15, bold: true, color: { argb: argb(BRAND.primary) } };
   t1.alignment = { vertical: 'middle' };
   const t2 = ws.getCell(2, titleCol);
@@ -639,9 +644,9 @@ export async function exportExcel(data: ExportTableData) {
       ws.getRow(rowIdx - 1).addPageBreak();
     }
     addShiftTitle(`${shift.label.toUpperCase()} · ${shift.rangeLabel}`);
-    addHeaderRow('SALA', roomNames, BRAND.primary, '#FFFFFF');
-    addHeaderRow('TERAPEUTA', therapistNames, BRAND.primaryLight, BRAND.primaryDarker, 9);
-    addHeaderRow('HORÁRIO', specialties, BRAND.secondaryLight, BRAND.secondaryText, 9);
+    addHeaderRow('SALA', roomNames, BRAND.headerSala, '#FFFFFF');
+    addHeaderRow('TERAPEUTA', therapistNames, BRAND.headerTerapeuta, BRAND.headerText, 9);
+    addHeaderRow('HORÁRIO', specialties, BRAND.headerEspecialidade, BRAND.headerSala, 9);
 
     const shiftStartRow = rowIdx;
     const emptyIds = emptyShiftRoomIds(model, shift, rooms);
