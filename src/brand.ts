@@ -18,25 +18,27 @@ export const handleLogoError = (e: { currentTarget: HTMLImageElement }) => {
 };
 
 export const BRAND = {
-  primary: '#BC1118', // vermelho Promédica
-  primaryDark: '#A10E15', // hover do site
-  primaryDarker: '#3C3C3B', // cinza escuro (cabeçalho TERAPEUTA / textos)
-  primaryLight: '#E8E8E8', // cinza claro (linha de especialidade)
-  primarySoft: '#F5F5F5', // fundo da coluna de horários
-  accent: '#6F6F6E',
+  primary: '#444C5B', // grafite (cinza da logo) — cabeçalhos e botões
+  primaryDark: '#3A404C',
+  primaryDarker: '#2F343D', // textos escuros
+  primaryLight: '#ECEEF2', // linha TERAPEUTA
+  primarySoft: '#F6F7F9', // linha de especialidade / coluna de horários
+  logoRed: '#BC1118', // vermelho Promédica: usado apenas na logo
+  accent: '#687386',
   ok: '#15803D',
+  foundBg: '#ECFDF5', // atendimento encontrado (verde bem claro)
   text: '#2B2B2B',
   muted: '#6B7280',
-  border: '#D4D4D4',
+  border: '#D7DBE2',
   // Cores semânticas da legenda (mantidas)
-  duplaBg: '#fef3c7',
-  duplaBadge: '#fde68a',
+  duplaBg: '#fffbeb',
+  duplaBadge: '#fef3c7',
   duplaText: '#78350f',
-  duplaBorder: '#d97706',
-  grupoBg: '#f3e8ff',
-  grupoBadge: '#e9d5ff',
-  grupoText: '#581c87',
-  grupoBorder: '#c084fc',
+  duplaBorder: '#fcd34d',
+  grupoBg: '#f5f3ff',
+  grupoBadge: '#ede9fe',
+  grupoText: '#4c1d95',
+  grupoBorder: '#c4b5fd',
   choqueBg: '#fee2e2',
   choque: '#dc2626',
   choqueDark: '#7f1d1d',

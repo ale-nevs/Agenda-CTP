@@ -323,7 +323,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#f4f7fb] pb-12 text-slate-900 print:bg-white print:p-0">
       {/* Cabeçalho */}
-      <header className="border-b-[3px] border-brand-700 bg-white print:hidden">
+      <header className="border-b border-slate-200 bg-white shadow-xs print:hidden">
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-4">
             <img src={LOGO_PATH} onError={handleLogoError} alt="Promédica" className="h-10 w-auto" />
@@ -390,48 +390,6 @@ export default function App() {
           />
         </div>
 
-        {/* Alerta de choque de horário */}
-        {dayConflictsList.length > 0 && (
-          <div className="overflow-hidden rounded-2xl border border-red-200 bg-white shadow-xs print:hidden">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-l-4 border-red-600 bg-red-50 px-4 py-2.5">
-              <h4 className="flex items-center gap-2 text-sm font-bold text-red-900">
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-red-600 text-white">
-                  <AlertTriangle className="h-4 w-4" />
-                </span>
-                Choque de horário: {dayConflictsList.length} conflito(s) na {report.dayOfWeek}
-              </h4>
-              <button
-                onClick={() => setIsPatientSearchOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
-              >
-                <UserCheck className="h-3.5 w-3.5" />
-                Ver grade completa do paciente
-              </button>
-            </div>
-            <div className="px-4 py-2.5">
-              <p className="mb-2 text-xs text-slate-600">
-                O mesmo paciente está agendado simultaneamente para dois profissionais diferentes no mesmo horário (intervalo de 30 minutos):
-              </p>
-              <div className="grid gap-1.5 md:grid-cols-2">
-                {dayConflictsList.map((c) => (
-                  <button
-                    key={c.key}
-                    onClick={() => setIsPatientSearchOpen(true)}
-                    className="flex flex-wrap items-center gap-2 rounded-lg border border-red-100 bg-white px-3 py-1.5 text-left text-xs hover:border-red-300 hover:bg-red-50"
-                  >
-                    <span className="inline-flex items-center gap-1 rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                      <Zap className="h-3 w-3 fill-current" />
-                      {c.slotTime}
-                    </span>
-                    <span className="font-bold text-red-950">{c.patientName}</span>
-                    <span className="text-[11px] text-slate-600">{c.description}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Cabeçalho apenas na impressão direta (Ctrl+P) */}
         <div className="mb-2 hidden border-b-2 border-brand-700 pb-2 print:block">
           <div className="flex items-start justify-between">
@@ -475,6 +433,48 @@ export default function App() {
           onOpenUpload={() => setIsUploadOpen(true)}
           onOpenRoomConfig={() => setIsRoomConfigOpen(true)}
         />
+
+        {/* Alerta de choque de horário */}
+        {dayConflictsList.length > 0 && (
+          <div className="overflow-hidden rounded-2xl border border-red-200 bg-white shadow-xs print:hidden">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-l-4 border-red-600 bg-red-50 px-4 py-2.5">
+              <h4 className="flex items-center gap-2 text-sm font-bold text-red-900">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-red-600 text-white">
+                  <AlertTriangle className="h-4 w-4" />
+                </span>
+                Choque de horário: {dayConflictsList.length} conflito(s) na {report.dayOfWeek}
+              </h4>
+              <button
+                onClick={() => setIsPatientSearchOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
+              >
+                <UserCheck className="h-3.5 w-3.5" />
+                Ver grade completa do paciente
+              </button>
+            </div>
+            <div className="px-4 py-2.5">
+              <p className="mb-2 text-xs text-slate-600">
+                O mesmo paciente está agendado simultaneamente para dois profissionais diferentes no mesmo horário (intervalo de 30 minutos):
+              </p>
+              <div className="grid gap-1.5 md:grid-cols-2">
+                {dayConflictsList.map((c) => (
+                  <button
+                    key={c.key}
+                    onClick={() => setIsPatientSearchOpen(true)}
+                    className="flex flex-wrap items-center gap-2 rounded-lg border border-red-100 bg-white px-3 py-1.5 text-left text-xs hover:border-red-300 hover:bg-red-50"
+                  >
+                    <span className="inline-flex items-center gap-1 rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                      <Zap className="h-3 w-3 fill-current" />
+                      {c.slotTime}
+                    </span>
+                    <span className="font-bold text-red-950">{c.patientName}</span>
+                    <span className="text-[11px] text-slate-600">{c.description}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {hasDayData && (
           <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 print:hidden">

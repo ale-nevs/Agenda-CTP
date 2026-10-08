@@ -144,6 +144,15 @@ function chunkRooms<T>(items: T[], max: number): T[][] {
   return chunks;
 }
 
+/** Profissionais sem nenhum paciente nos horários (não-almoço) do turno: viram "SALA VAZIA" mesclada. */
+function emptyShiftRoomIds(model: ScheduleModel, shift: ShiftModel, rooms: TherapistSchedule[]): Set<string> {
+  const times = shift.times.filter((t) => !t.isMidday).map((t) => t.time);
+  if (times.length < 2) return new Set();
+  return new Set(
+    rooms.filter((r) => times.every((time) => !model.data.getCellContent(r.id, time))).map((r) => r.id)
+  );
+}
+
 function escapeHtml(value: string): string {
   return (value || '')
     .replace(/&/g, '&amp;')
@@ -158,7 +167,7 @@ function safeFileName(data: ExportTableData): string {
   return `Validacao_Agendas_${day}_${date}`.replace(/_+$/, '');
 }
 
-function triggerDownload(blob: Blob, fileName: string) {
+export function triggerDownload(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -257,17 +266,18 @@ const DOCUMENT_CSS = `
   .meta { text-align: right; font-size: 9px; color: ${BRAND.muted}; line-height: 1.4; }
   .meta strong { color: ${BRAND.text}; }
   table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  th, td { border: 1px solid #6b7a90; padding: 2px 3px; vertical-align: middle; word-wrap: break-word; overflow-wrap: anywhere; }
+  th, td { border: 1px solid #b4bbc6; padding: 2px 3px; vertical-align: middle; word-wrap: break-word; overflow-wrap: anywhere; }
   col.c-time { width: 14mm; }
   thead th { text-align: center; font-weight: 800; }
   tr.h-sala th { background: ${BRAND.primary}; color: #fff; letter-spacing: .3px; }
-  tr.h-terapeuta th { background: ${BRAND.primaryDarker}; color: #fff; }
-  tr.h-especialidade th { background: ${BRAND.primaryLight}; color: ${BRAND.primaryDarker}; }
+  tr.h-terapeuta th { background: ${BRAND.primaryLight}; color: ${BRAND.primaryDarker}; }
+  tr.h-especialidade th { background: ${BRAND.primarySoft}; color: ${BRAND.accent}; }
   th.corner { font-size: .72em; letter-spacing: -.2px; padding: 2px 1px; }
   tbody td.time { text-align: center; font-weight: 800; background: ${BRAND.primarySoft}; color: ${BRAND.primaryDarker}; }
   tbody tr { page-break-inside: avoid; break-inside: avoid; }
-  td.c-single { font-weight: 600; }
+  td.c-single { font-weight: 600; background: ${BRAND.foundBg}; }
   td.c-empty { background: #fff; }
+  td.c-vazia { background: #f8fafc; color: #9ca3af; text-align: center; font-weight: 800; letter-spacing: .25em; }
   td.c-lunch { text-align: center; color: ${BRAND.muted}; font-weight: 700; letter-spacing: .5px; background: #fafbfc; }
   td.c-dupla { background: ${BRAND.duplaBg}; }
   td.c-grupo { background: ${BRAND.grupoBg}; }
@@ -332,10 +342,15 @@ function buildPagesHtml(model: ScheduleModel, logoDataUrl: string | null): { htm
             .join('')}</tr>
         </thead>`;
 
+      const emptyIds = emptyShiftRoomIds(model, shift, rooms);
+      const mergeCount = shift.times.filter((t) => !t.isMidday).length;
       const body = shift.times
-        .map(({ time, isMidday }) => {
+        .map(({ time, isMidday }, rowIdx) => {
           const cells = rooms
             .map((t) => {
+              if (!isMidday && emptyIds.has(t.id)) {
+                return rowIdx === 0 ? `<td class="c-vazia" rowspan="${mergeCount}">SALA VAZIA</td>` : '';
+              }
               const r = renderCellHtml(cell(t, time, isMidday));
               return `<td class="${r.cls}">${r.html}</td>`;
             })
@@ -623,9 +638,11 @@ export async function exportExcel(data: ExportTableData) {
     }
     addShiftTitle(`${shift.label.toUpperCase()} · ${shift.rangeLabel}`);
     addHeaderRow('SALA', roomNames, BRAND.primary, '#FFFFFF');
-    addHeaderRow('TERAPEUTA', therapistNames, BRAND.primaryDarker, '#FFFFFF', 9);
-    addHeaderRow('HORÁRIO', specialties, BRAND.primaryLight, BRAND.primaryDarker, 9);
+    addHeaderRow('TERAPEUTA', therapistNames, BRAND.primaryLight, BRAND.primaryDarker, 9);
+    addHeaderRow('HORÁRIO', specialties, BRAND.primarySoft, BRAND.accent, 9);
 
+    const shiftStartRow = rowIdx;
+    const emptyIds = emptyShiftRoomIds(model, shift, rooms);
     shift.times.forEach(({ time, isMidday }) => {
       const row = ws.getRow(rowIdx++);
       const timeCell = row.getCell(1);
@@ -660,6 +677,8 @@ export async function exportExcel(data: ExportTableData) {
           color = BRAND.grupoText;
         } else if (c.isLunch) {
           color = BRAND.muted;
+        } else if (!c.isEmpty) {
+          bg = BRAND.foundBg;
         }
         cell.fill = fill(bg);
         cell.font = { name: font, size: 9, bold: !c.isEmpty, color: { argb: argb(color) } };
@@ -679,6 +698,19 @@ export async function exportExcel(data: ExportTableData) {
         maxLines = Math.max(maxLines, lines);
       });
       row.height = Math.max(18, maxLines * 12 + 4);
+    });
+
+    // "SALA VAZIA" mesclada nos turnos sem nenhum paciente
+    const mergeCount = shift.times.filter((t) => !t.isMidday).length;
+    rooms.forEach((t, i) => {
+      if (!emptyIds.has(t.id)) return;
+      const col = i + 2;
+      ws.mergeCells(shiftStartRow, col, shiftStartRow + mergeCount - 1, col);
+      const merged = ws.getCell(shiftStartRow, col);
+      merged.value = 'SALA VAZIA';
+      merged.fill = fill('#F8FAFC');
+      merged.font = { name: font, size: 11, bold: true, color: { argb: argb('#9CA3AF') } };
+      merged.alignment = { horizontal: 'center', vertical: 'middle' };
     });
 
     // Choques do turno
