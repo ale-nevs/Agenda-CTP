@@ -7,7 +7,7 @@ import {
   getConflictingPatientsForCell,
   normalizePatientName,
 } from './conflictUtils';
-import { APP_FULL_NAME, APP_NAME, APP_SUBTITLE, BRAND, FONT_FAMILY, getLogoDataUrl, getLogoPngBase64 } from '../brand';
+import { APP_FULL_NAME, APP_NAME, APP_SUBTITLE, BRAND, FONT_FAMILY, getEmbeddedFontFaceCss, getLogoDataUrl, getLogoPngBase64 } from '../brand';
 
 export interface ExportTableData {
   title: string;
@@ -20,6 +20,8 @@ export interface ExportTableData {
   activeTherapists: TherapistSchedule[];
   getCellContent: (therapistId: string, time: string) => string;
   showLunchPlaceholder?: boolean;
+  /** 30 = grade padrão de 30 min; 60 = Grade de 1h */
+  slotMinutes?: number;
 }
 
 /**
@@ -71,13 +73,21 @@ interface ScheduleModel {
 }
 
 function buildScheduleModel(data: ExportTableData): ScheduleModel {
-  const { morningTimes, middayTimes, afternoonTimes, activeTherapists, getCellContent, showLunchPlaceholder = true } = data;
+  const {
+    morningTimes,
+    middayTimes,
+    afternoonTimes,
+    activeTherapists,
+    getCellContent,
+    showLunchPlaceholder = true,
+    slotMinutes = 30,
+  } = data;
   const allTimes = [...morningTimes, ...middayTimes, ...afternoonTimes];
-  const conflictsMap = findScheduleConflictsForDay(activeTherapists, allTimes, getCellContent);
+  const conflictsMap = findScheduleConflictsForDay(activeTherapists, allTimes, getCellContent, slotMinutes);
 
   const cell = (therapist: TherapistSchedule, time: string, isMidday: boolean): CellModel => {
     const raw = getCellContent(therapist.id, time) || '';
-    const analysis = analyzeCellSlot(raw, therapist, time);
+    const analysis = analyzeCellSlot(raw, therapist, time, slotMinutes);
     const conflicting = getConflictingPatientsForCell(
       conflictsMap,
       activeTherapists,
@@ -110,7 +120,7 @@ function buildScheduleModel(data: ExportTableData): ScheduleModel {
     {
       key: 'MANHA',
       label: 'Turno da Manhã',
-      rangeLabel: rangeLabel([...morningTimes, ...middayTimes]),
+      rangeLabel: rangeLabel([...morningTimes, ...middayTimes], slotMinutes),
       times: [
         ...morningTimes.map((time) => ({ time, isMidday: false })),
         ...middayTimes.map((time) => ({ time, isMidday: true })),
@@ -119,7 +129,7 @@ function buildScheduleModel(data: ExportTableData): ScheduleModel {
     {
       key: 'TARDE',
       label: 'Turno da Tarde',
-      rangeLabel: rangeLabel(afternoonTimes),
+      rangeLabel: rangeLabel(afternoonTimes, slotMinutes),
       times: afternoonTimes.map((time) => ({ time, isMidday: false })),
     },
   ];
@@ -133,12 +143,16 @@ function buildScheduleModel(data: ExportTableData): ScheduleModel {
   };
 }
 
-function rangeLabel(times: string[]): string {
+function gradeLabel(data: ExportTableData): string {
+  return (data.slotMinutes || 30) >= 60 ? 'Grade de 1h' : 'Grade de 30 min';
+}
+
+function rangeLabel(times: string[], slotMinutes = 30): string {
   if (times.length === 0) return '';
   const sorted = [...times].sort();
   const last = sorted[sorted.length - 1];
   const [h, m] = last.split(':').map(Number);
-  const end = h * 60 + m + 29;
+  const end = h * 60 + m + slotMinutes - 1;
   const endLabel = `${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`;
   return `${sorted[0]} às ${endLabel}`;
 }
@@ -172,7 +186,8 @@ function escapeHtml(value: string): string {
 function safeFileName(data: ExportTableData): string {
   const day = (data.dayOfWeek || 'Dia').replace(/[^\p{L}\p{N}-]+/gu, '_');
   const date = (data.date || '').replace(/\//g, '-');
-  return `Validacao_Agendas_${day}_${date}`.replace(/_+$/, '');
+  const grade = (data.slotMinutes || 30) >= 60 ? '_Grade1h' : '';
+  return `Validacao_Agendas_${day}_${date}`.replace(/_+$/, '') + grade;
 }
 
 export function triggerDownload(blob: Blob, fileName: string) {
@@ -379,7 +394,7 @@ function buildPagesHtml(model: ScheduleModel, logoDataUrl: string | null): { htm
                 <h1>${escapeHtml(APP_NAME)} <span>· ${escapeHtml(data.clinic || APP_SUBTITLE)}</span></h1>
                 <div class="sub"><span class="shift-tag">${escapeHtml(shift.label.toUpperCase())}</span>${escapeHtml(
                   data.dayOfWeek
-                )} · ${escapeHtml(data.date)} · ${escapeHtml(shift.rangeLabel)}</div>
+                )} · ${escapeHtml(data.date)} · ${escapeHtml(shift.rangeLabel)} · ${gradeLabel(data)}</div>
               </div>
             </div>
             <div class="meta">
@@ -442,6 +457,7 @@ const FIT_SCRIPT = `
 async function buildDocumentHtml(data: ExportTableData, options: { withToolbar: boolean }): Promise<string> {
   const model = buildScheduleModel(data);
   const logo = await getLogoDataUrl();
+  const fontFaceCss = await getEmbeddedFontFaceCss();
   const { html: pagesHtml, pageCount } = buildPagesHtml(model, logo);
   const docTitle = safeFileName(data);
 
@@ -463,7 +479,7 @@ async function buildDocumentHtml(data: ExportTableData, options: { withToolbar: 
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escapeHtml(docTitle)}</title>
-  <style>${DOCUMENT_CSS}</style>
+  <style>${fontFaceCss}${DOCUMENT_CSS}</style>
 </head>
 <body>
   ${toolbar}
@@ -608,7 +624,7 @@ export async function exportExcel(data: ExportTableData) {
   t1.font = { name: font, size: 15, bold: true, color: { argb: argb(BRAND.primary) } };
   t1.alignment = { vertical: 'middle' };
   const t2 = ws.getCell(2, titleCol);
-  t2.value = `${data.dayOfWeek} · ${data.date} · ${rooms.length} sala(s) · ${model.totalAppointments} atendimentos · ${model.conflicts.length} choque(s)`;
+  t2.value = `${data.dayOfWeek} · ${data.date} · ${gradeLabel(data)} · ${rooms.length} sala(s) · ${model.totalAppointments} atendimentos · ${model.conflicts.length} choque(s)`;
   t2.font = { name: font, size: 10, bold: true, color: { argb: argb(BRAND.text) } };
   t2.alignment = { vertical: 'middle' };
   if (logo) {

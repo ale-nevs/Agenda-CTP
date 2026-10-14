@@ -1,9 +1,18 @@
 @import "tailwindcss";
 
+/* Fonte padrão: Inter (arquivo variável, pesos 100–900) */
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/inter-latin-wght-normal.woff2") format("woff2-variations"),
+    url("/fonts/inter-latin-wght-normal.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* Identidade visual (espelhada em src/brand.ts) */
 @theme {
-  /* Fonte do site promedica.com.br (font-helvetica) */
-  --font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-sans: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
 
   /* Paleta executiva (saúde)
      brand  = azul-marinho: estrutura, cabeçalhos, selecionado (700) e selecionável (50/100)

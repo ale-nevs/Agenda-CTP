@@ -38,7 +38,7 @@ export const PatientCellDisplay: React.FC<PatientCellDisplayProps> = ({
         )}
         {otherConflict && (
           <span
-            className="inline-flex items-center gap-0.5 rounded bg-red-600 text-white px-1.5 py-0.5 text-[9px] font-black border border-red-700 shadow-2xs shrink-0 cursor-help animate-pulse"
+            className="inline-flex items-center gap-0.5 rounded bg-red-600 text-white px-1.5 py-0.5 text-[9px] font-black border border-red-700 shadow-2xs shrink-0 cursor-help"
             title={`⚠️ CHOQUE DE HORÁRIO: Também agendado em ${otherConflict}!`}
           >
             <Zap className="h-2.5 w-2.5 fill-current" />
@@ -82,7 +82,7 @@ export const PatientCellDisplay: React.FC<PatientCellDisplayProps> = ({
 
         {hasAnyConflict && (
           <span
-            className="inline-flex items-center gap-0.5 rounded bg-red-600 text-white px-1.5 py-0.2 text-[8.5px] font-black border border-red-700 shrink-0 animate-pulse"
+            className="inline-flex items-center gap-0.5 rounded bg-red-600 text-white px-1.5 py-0.2 text-[8.5px] font-black border border-red-700 shrink-0"
             title="Atenção: Choque de Horário detectado para paciente nesta sala!"
           >
             <Zap className="h-2.5 w-2.5 fill-current inline" />

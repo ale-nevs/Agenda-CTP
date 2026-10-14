@@ -5,8 +5,18 @@ import { SpreadsheetToolbar, ExportKind } from './components/SpreadsheetToolbar'
 import { UploadModal } from './components/UploadModal';
 import { RoomConfigModal } from './components/RoomConfigModal';
 import { PatientScheduleModal } from './components/PatientScheduleModal';
+import { GroupsModal, GroupSlotItem } from './components/GroupsModal';
+import { analyzeCellSlot } from './utils/clinicalAlerts';
+import { getUnitInfo } from './utils/unitInfo';
 import { exportStandaloneHtml, exportExcel, exportPdf, ExportTableData } from './utils/exportUtils';
-import { findScheduleConflictsForDay, getAllDayConflicts } from './utils/conflictUtils';
+import {
+  findScheduleConflictsForDay,
+  getAllDayConflicts,
+  getConflictingPatientsForCell,
+  getIntervalSlot,
+  normalizePatientName,
+  parsePatientsFromCellString,
+} from './utils/conflictUtils';
 import { APP_NAME, APP_SUBTITLE, LOGO_PATH, handleLogoError } from './brand';
 import { Calendar, Info, AlertTriangle, Zap } from 'lucide-react';
 
@@ -76,6 +86,7 @@ export default function App() {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isRoomConfigOpen, setIsRoomConfigOpen] = useState(false);
   const [isPatientSearchOpen, setIsPatientSearchOpen] = useState(false);
+  const [isGroupsOpen, setIsGroupsOpen] = useState(false);
 
   // When reports are uploaded via batch or single upload
   const handleWeeklyReportsLoaded = (newReports: Partial<Record<DayOfWeekKey, ParsedReport>>) => {
@@ -202,8 +213,36 @@ export default function App() {
     });
   };
 
-  // Standard 30-min interval grid time slots (Grade Padrão Clínica)
+  // Grade padrão de 30 min ou Grade de 1h (os dois horários de 30 min se juntam na hora cheia)
+  const [slotMinutes, setSlotMinutesState] = useState<30 | 60>(() => {
+    try {
+      return localStorage.getItem('agenda-ctp:grade') === '60' ? 60 : 30;
+    } catch {
+      return 30;
+    }
+  });
+  const setSlotMinutes = (value: 30 | 60) => {
+    setSlotMinutesState(value);
+    try {
+      localStorage.setItem('agenda-ctp:grade', String(value));
+    } catch {
+      /* armazenamento indisponível */
+    }
+  };
+
+  // Horários da grade (30 em 30 min ou de hora em hora)
   const { morningTimes, middayTimes, afternoonTimes } = useMemo(() => {
+    if (slotMinutes === 60) {
+      const toHour = (list: string[]) => list.map((t) => getIntervalSlot(t, 60));
+      return {
+        morningTimes: Array.from(new Set(['07:00', '08:00', '09:00', '10:00', '11:00', ...toHour(customMorningTimes)])).sort(),
+        middayTimes: Array.from(new Set(['12:00', ...toHour(customMiddayTimes)])).sort(),
+        afternoonTimes: Array.from(
+          new Set(['13:00', '14:00', '15:00', '16:00', '17:00', '18:00', ...toHour(customAfternoonTimes)])
+        ).sort(),
+      };
+    }
+
     const standardMorning = ['07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30'];
     const standardMidday = ['12:00', '12:30'];
     const standardAfternoon = ['13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30', '18:00', '18:30'];
@@ -213,38 +252,67 @@ export default function App() {
       middayTimes: Array.from(new Set([...standardMidday, ...customMiddayTimes])).sort(),
       afternoonTimes: Array.from(new Set([...standardAfternoon, ...customAfternoonTimes])).sort(),
     };
-  }, [customMorningTimes, customMiddayTimes, customAfternoonTimes]);
+  }, [customMorningTimes, customMiddayTimes, customAfternoonTimes, slotMinutes]);
 
-  // Helper to get cell content for therapist at specific 30-min standard time
-  const getCellContent = (therapistId: string, time: string): string => {
-    const dayOverrides = dayCellOverrides[activeDay] || {};
-    const key = `${therapistId}-${time}`;
-    if (dayOverrides[key] !== undefined) {
-      return dayOverrides[key];
-    }
+  // Edições manuais ficam separadas por tipo de grade (30 min e 1h)
+  const cellKey = (therapistId: string, time: string) =>
+    slotMinutes === 60 ? `${therapistId}-1h-${time}` : `${therapistId}-${time}`;
 
-    const therapist = report.therapists.find((t) => t.id === therapistId);
-    if (!therapist) return '';
+  // Conteúdo da célula: pacientes da profissional no intervalo do horário (30 min ou 1h)
+  const getCellContent = React.useCallback(
+    (therapistId: string, time: string): string => {
+      const dayOverrides = dayCellOverrides[activeDay] || {};
+      const key = slotMinutes === 60 ? `${therapistId}-1h-${time}` : `${therapistId}-${time}`;
+      if (dayOverrides[key] !== undefined) {
+        return dayOverrides[key];
+      }
 
-    // Standard 30-min window grouping: covers [slotStart, slotStart + 29]
-    // e.g. slot 17:00 captures 17:00, 17:01, etc.
-    const [slotH, slotM] = time.split(':').map(Number);
-    const slotStart = slotH * 60 + slotM;
-    const slotEnd = slotStart + 29;
+      const therapist = report.therapists.find((t) => t.id === therapistId);
+      if (!therapist) return '';
 
-    const matches = therapist.appointments.filter((a) => {
-      const [aH, aM] = a.time.split(':').map(Number);
-      const aTotal = aH * 60 + aM;
-      return aTotal >= slotStart && aTotal <= slotEnd;
-    });
+      const [slotH, slotM] = time.split(':').map(Number);
+      const slotStart = slotH * 60 + slotM;
 
-    if (matches.length === 0) return '';
-    if (matches.length === 1) return matches[0].patientName;
-    return matches.map((m) => `${m.patientName} (${m.time})`).join(' / ');
-  };
+      // Pacientes de um intervalo de 30 min (ou a edição manual feita na grade de 30 min)
+      const itemsInHalf = (halfStart: number): Array<{ name: string; time: string }> => {
+        const halfTime = `${String(Math.floor(halfStart / 60)).padStart(2, '0')}:${String(halfStart % 60).padStart(2, '0')}`;
+        const halfOverride = dayOverrides[`${therapistId}-${halfTime}`];
+        if (slotMinutes === 60 && halfOverride !== undefined) {
+          return parsePatientsFromCellString(halfOverride).map((p) => ({ name: p.name, time: p.exactTime || halfTime }));
+        }
+        return therapist.appointments
+          .filter((a) => {
+            const [aH, aM] = a.time.split(':').map(Number);
+            const aTotal = aH * 60 + aM;
+            return aTotal >= halfStart && aTotal <= halfStart + 29;
+          })
+          .map((a) => ({ name: a.patientName, time: a.time }));
+      };
+
+      let matches = slotMinutes === 60 ? [...itemsInHalf(slotStart), ...itemsInHalf(slotStart + 30)] : itemsInHalf(slotStart);
+
+      // Grade de 1h: o mesmo paciente nos dois meios-horários conta uma vez só
+      if (slotMinutes === 60) {
+        const seen = new Set<string>();
+        matches = matches
+          .sort((x, y) => x.time.localeCompare(y.time))
+          .filter((m) => {
+            const k = normalizePatientName(m.name);
+            if (seen.has(k)) return false;
+            seen.add(k);
+            return true;
+          });
+      }
+
+      if (matches.length === 0) return '';
+      if (matches.length === 1) return matches[0].name;
+      return matches.map((m) => `${m.name} (${m.time})`).join(' / ');
+    },
+    [dayCellOverrides, activeDay, report, slotMinutes]
+  );
 
   const handleUpdateCellContent = (therapistId: string, time: string, newContent: string) => {
-    const key = `${therapistId}-${time}`;
+    const key = cellKey(therapistId, time);
     setDayCellOverrides((prev) => ({
       ...prev,
       [activeDay]: {
@@ -283,12 +351,58 @@ export default function App() {
   }, [morningTimes, middayTimes, afternoonTimes]);
 
   const conflictsMap = useMemo(() => {
-    return findScheduleConflictsForDay(activeTherapists, allTimeSlots, getCellContent);
-  }, [activeTherapists, allTimeSlots, getCellContent]);
+    return findScheduleConflictsForDay(activeTherapists, allTimeSlots, getCellContent, slotMinutes);
+  }, [activeTherapists, allTimeSlots, getCellContent, slotMinutes]);
 
   const dayConflictsList = useMemo(() => {
     return getAllDayConflicts(conflictsMap);
   }, [conflictsMap]);
+
+  // Unidade identificada no arquivo: subtítulo com CNPJ e sigla (ex.: "CTP GARIBALDI")
+  const unitInfo = useMemo(() => getUnitInfo(clinicName), [clinicName]);
+
+  // Todas as duplas e grupos do dia (calculado só com a janela aberta)
+  const groupItems = useMemo<GroupSlotItem[]>(() => {
+    if (!isGroupsOpen) return [];
+    const list: GroupSlotItem[] = [];
+    const middaySet = new Set(middayTimes);
+    allTimeSlots.forEach((time) => {
+      activeTherapists.forEach((therapist) => {
+        const content = getCellContent(therapist.id, time);
+        if (!content) return;
+        const analysis = analyzeCellSlot(content, therapist, time, slotMinutes);
+        if (!analysis.isMultiple) return;
+        const conflicting = getConflictingPatientsForCell(
+          conflictsMap,
+          activeTherapists,
+          therapist.id,
+          time,
+          analysis.patients.map((p) => p.name),
+          content
+        );
+        list.push({
+          key: `${therapist.id}-${time}${middaySet.has(time) ? '-m' : ''}`,
+          time,
+          roomName: therapist.roomName,
+          therapistName: therapist.name,
+          specialty: therapist.specialty,
+          count: analysis.count,
+          isDupla: analysis.isDupla,
+          isGrupo: analysis.isGrupo,
+          hasClinicalAlert: analysis.hasClinicalAlert,
+          hasConflict: Object.keys(conflicting).length > 0,
+          patients: analysis.patients.map((p) => ({
+            name: p.name,
+            exactTime: p.exactTime,
+            isPromptOrAyres: p.isPromptOrAyres,
+            protocolLabel: p.isPromptOrAyres ? (p.alertType === 'TO AYRES' ? 'Ayres' : 'Prompt') : undefined,
+            conflictWith: conflicting[normalizePatientName(p.name)],
+          })),
+        });
+      });
+    });
+    return list;
+  }, [isGroupsOpen, allTimeSlots, middayTimes, activeTherapists, getCellContent, slotMinutes, conflictsMap]);
 
   // Export handlers
   const getExportData = (): ExportTableData => ({
@@ -302,6 +416,7 @@ export default function App() {
     activeTherapists,
     getCellContent,
     showLunchPlaceholder,
+    slotMinutes,
   });
 
   const runExport = async (kind: ExportKind, fn: (data: ExportTableData) => Promise<void>) => {
@@ -328,15 +443,16 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#f4f7fb] pb-12 text-slate-900 print:bg-white print:p-0">
       {/* Cabeçalho */}
-      <header className="border-b border-slate-200 bg-white shadow-xs print:hidden">
+      {/* Topo fixo */}
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white shadow-xs print:hidden">
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-4">
-            <img src={LOGO_PATH} onError={handleLogoError} alt="Promédica" className="h-10 w-auto" />
+            <img src={LOGO_PATH} onError={handleLogoError} alt="Promédica" className="h-11 w-auto" />
             <div className="hidden h-9 w-px bg-slate-200 sm:block" />
             <div>
               <h1 className="text-lg font-extrabold leading-tight tracking-tight text-brand-800">{APP_NAME}</h1>
               <p className="text-xs font-semibold uppercase tracking-wider text-accent-600" title={clinicName ? 'Identificado no arquivo enviado' : undefined}>
-                {clinicName || APP_SUBTITLE}
+                {unitInfo?.subtitle || APP_SUBTITLE}
               </p>
             </div>
           </div>
@@ -347,14 +463,16 @@ export default function App() {
               {report.dayOfWeek}
               {report.date ? ` · ${report.date}` : ''}
             </span>
+            {unitInfo && (
+              <span
+                className="rounded-lg bg-accent-50 px-2.5 py-1.5 font-bold tracking-wide text-accent-700 ring-1 ring-accent-200"
+                title={unitInfo.fullName}
+              >
+                {unitInfo.short}
+              </span>
+            )}
             {hasDayData && (
               <>
-                <span className="rounded-lg bg-slate-100 px-2.5 py-1.5 font-semibold text-slate-700 ring-1 ring-slate-200">
-                  {activeTherapists.length} salas
-                </span>
-                <span className="rounded-lg bg-accent-50 px-2.5 py-1.5 font-semibold text-accent-700 ring-1 ring-accent-200">
-                  {totalAppointmentsCount} consultas
-                </span>
                 <span
                   className={`rounded-lg px-2.5 py-1.5 font-semibold ${
                     dayConflictsList.length > 0
@@ -394,6 +512,9 @@ export default function App() {
             hasAnyData={hasAnyData}
             hasDayData={hasDayData}
             exporting={exporting}
+            slotMinutes={slotMinutes}
+            onChangeSlotMinutes={setSlotMinutes}
+            onOpenGroups={() => setIsGroupsOpen(true)}
           />
         </div>
 
@@ -404,7 +525,7 @@ export default function App() {
               <img src={LOGO_PATH} onError={handleLogoError} alt="Promédica" className="h-8 w-auto" />
               <div>
                 <h1 className="text-base font-extrabold text-brand-800">
-                  {APP_NAME} · {clinicName || APP_SUBTITLE}
+                  {APP_NAME} · {unitInfo?.subtitle || APP_SUBTITLE}
                 </h1>
                 <p className="text-[11px] font-bold text-black">
                   {report.dayOfWeek}
@@ -435,6 +556,7 @@ export default function App() {
           onUpdateTherapistHeader={handleUpdateTherapistHeader}
           onAddCustomTime={handleAddCustomTime}
           showLunchPlaceholder={showLunchPlaceholder}
+          slotMinutes={slotMinutes}
           hasReport={hasDayData}
           dayLabel={report.dayOfWeek}
           onOpenUpload={() => setIsUploadOpen(true)}
@@ -454,7 +576,7 @@ export default function App() {
             </div>
             <div className="px-4 py-2.5">
               <p className="mb-2 text-xs text-slate-600">
-                O mesmo paciente está agendado simultaneamente para dois profissionais diferentes no mesmo horário (intervalo de 30 minutos):
+                O mesmo paciente está agendado simultaneamente para dois profissionais diferentes no mesmo horário (intervalo de {slotMinutes === 60 ? "1 hora" : "30 minutos"}):
               </p>
               <div className="grid gap-1.5 md:grid-cols-2">
                 {dayConflictsList.map((c) => (
@@ -483,7 +605,7 @@ export default function App() {
                 <strong>Edição rápida:</strong> clique em qualquer paciente, terapeuta ou sala para editar no local.
               </span>
             </div>
-            <div>Grade padrão de 30 min · Relatórios PS120108</div>
+            <div>{slotMinutes === 60 ? "Grade de 1h" : "Grade padrão de 30 min"} · Relatórios PS120108</div>
           </div>
         )}
       </main>
@@ -502,6 +624,20 @@ export default function App() {
         onClose={() => setIsPatientSearchOpen(false)}
         weeklyReports={weeklyReports}
         initialDay={activeDay}
+        slotMinutes={slotMinutes}
+      />
+
+      {/* Todas as duplas e grupos do dia */}
+      <GroupsModal
+        isOpen={isGroupsOpen}
+        onClose={() => setIsGroupsOpen(false)}
+        items={groupItems}
+        dayLabel={report.dayOfWeek}
+        date={report.date}
+        slotMinutes={slotMinutes}
+        activeDay={activeDay}
+        onSelectDay={setActiveDay}
+        daysWithData={daysWithData}
       />
 
       {/* Room Configuration Modal */}

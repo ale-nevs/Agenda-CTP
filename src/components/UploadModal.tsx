@@ -207,7 +207,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-6 backdrop-blur-xs">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-6">
       <div className="flex max-h-[92vh] w-full max-w-3xl flex-col rounded-xl bg-white shadow-2xl overflow-hidden border border-gray-200">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-200 bg-brand-800 px-6 py-4 text-white">
@@ -224,7 +224,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-brand-200 hover:bg-brand-800 hover:text-white transition-colors"
+            className="rounded-lg p-1.5 text-brand-200 hover:bg-brand-800 hover:text-white"
           >
             <X className="h-5 w-5" />
           </button>
@@ -234,7 +234,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
         <div className="flex border-b border-gray-200 bg-gray-50 px-6 pt-3 gap-2">
           <button
             onClick={() => setActiveTab('batch')}
-            className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-bold transition-all ${
+            className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-bold ${
               activeTab === 'batch'
                 ? 'border-brand-700 text-brand-950 bg-white rounded-t-lg shadow-2xs'
                 : 'border-transparent text-gray-500 hover:text-gray-900'
@@ -246,7 +246,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
           <button
             onClick={() => setActiveTab('single')}
-            className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-bold transition-all ${
+            className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-bold ${
               activeTab === 'single'
                 ? 'border-brand-700 text-brand-950 bg-white rounded-t-lg shadow-2xs'
                 : 'border-transparent text-gray-500 hover:text-gray-900'
@@ -258,7 +258,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
 
           <button
             onClick={() => setActiveTab('paste')}
-            className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-bold transition-all ${
+            className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-bold ${
               activeTab === 'paste'
                 ? 'border-brand-700 text-brand-950 bg-white rounded-t-lg shadow-2xs'
                 : 'border-transparent text-gray-500 hover:text-gray-900'
@@ -290,9 +290,9 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                   onDragLeave={handleDrag}
                   onDragOver={handleDrag}
                   onDrop={handleDrop}
-                  className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 text-center transition-all ${
+                  className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 text-center ${
                     dragActive
-                      ? 'border-brand-600 bg-brand-50/70 scale-[0.99]'
+                      ? 'border-brand-600 bg-brand-50/70'
                       : 'border-gray-300 bg-gray-50/50 hover:bg-gray-50 hover:border-brand-500'
                   }`}
                 >
@@ -306,7 +306,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                     Você pode selecionar de 1 até 6 arquivos simultaneamente (Segunda à Sábado). O sistema detectará o dia da semana automaticamente de cada relatório.
                   </p>
 
-                  <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-brand-700 px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-brand-800 transition-colors">
+                  <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-brand-700 px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-brand-800">
                     <Upload className="h-4 w-4" />
                     <span>Selecionar Arquivos .HTM</span>
                     <input
@@ -352,7 +352,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                     {filePreviews.map((preview, index) => (
                       <div
                         key={index}
-                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-gray-200 bg-brand-50/40 p-3 shadow-xs hover:border-brand-300 transition-colors"
+                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-gray-200 bg-brand-50/40 p-3 shadow-xs hover:border-brand-300"
                       >
                         <div className="flex items-center gap-3">
                           <div className="rounded-md bg-brand-700 p-2 text-white">
@@ -407,7 +407,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                     </button>
                     <button
                       onClick={handleConfirmBatchUpload}
-                      className="inline-flex items-center gap-2 rounded-lg bg-brand-700 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-brand-800 transition-colors"
+                      className="inline-flex items-center gap-2 rounded-lg bg-brand-700 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-brand-800"
                     >
                       <Sparkles className="h-4 w-4" />
                       <span>Carregar {filePreviews.length} Dia(s) na Grade</span>
@@ -430,7 +430,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                     <button
                       key={d.key}
                       onClick={() => setTargetSingleDay(d.key)}
-                      className={`rounded-lg py-2 px-1 text-center text-xs font-bold transition-all border ${
+                      className={`rounded-lg py-2 px-1 text-center text-xs font-bold border ${
                         targetSingleDay === d.key
                           ? 'bg-brand-700 text-white border-brand-700 shadow-xs'
                           : 'bg-white text-gray-700 border-gray-200 hover:border-brand-300'
@@ -451,7 +451,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                   O relatório substituirá a grade de {targetSingleDay}.
                 </p>
 
-                <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-brand-700 px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-brand-800 transition-colors">
+                <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-brand-700 px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-brand-800">
                   <Upload className="h-4 w-4" />
                   <span>Escolher Arquivo .HTM</span>
                   <input
