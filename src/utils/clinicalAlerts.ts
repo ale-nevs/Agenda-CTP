@@ -1,4 +1,5 @@
 import { Appointment, TherapistSchedule } from '../types';
+import { normalizePatientName } from './conflictUtils';
 
 export interface ParsedPatientItem {
   id?: string;
@@ -47,7 +48,8 @@ export function checkProtocol(text: string): { isAlert: boolean; alertType?: 'FO
 export function analyzeCellSlot(
   content: string,
   therapist?: TherapistSchedule,
-  time?: string
+  time?: string,
+  slotMinutes = 30
 ): CellSlotAnalysis {
   const cleanContent = (content || '').trim();
   if (!cleanContent) {
@@ -69,7 +71,7 @@ export function analyzeCellSlot(
     if (therapist.appointments && therapist.appointments.length > 0) {
       const [slotH, slotM] = time.split(':').map(Number);
       const slotStart = slotH * 60 + slotM;
-      const slotEnd = slotStart + 29;
+      const slotEnd = slotStart + slotMinutes - 1;
 
       matchingApps = therapist.appointments.filter((a) => {
         const [aH, aM] = a.time.split(':').map(Number);
@@ -131,6 +133,23 @@ export function analyzeCellSlot(
           : undefined,
       };
     });
+  }
+
+  // Grade de 1h: os dois horários de 30 min se juntam, então o mesmo paciente conta uma vez só na hora
+  if (slotMinutes > 30 && patientItems.length > 1) {
+    const merged = new Map<string, ParsedPatientItem>();
+    [...patientItems]
+      .sort((a, b) => (a.exactTime || '').localeCompare(b.exactTime || ''))
+      .forEach((p) => {
+        const key = normalizePatientName(p.name) || p.name;
+        const existing = merged.get(key);
+        if (!existing) {
+          merged.set(key, { ...p });
+        } else if (p.isPromptOrAyres && !existing.isPromptOrAyres) {
+          merged.set(key, { ...existing, isPromptOrAyres: true, alertType: p.alertType, alertReason: p.alertReason });
+        }
+      });
+    patientItems = Array.from(merged.values());
   }
 
   const count = patientItems.length;

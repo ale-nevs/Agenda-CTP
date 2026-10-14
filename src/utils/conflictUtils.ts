@@ -63,7 +63,7 @@ export function normalizeTherapistName(name: string): string {
  * - Horário 2: 30 a 59 minutos (ex: 09:30 à 09:59) -> Bloco "09:30"
  * - 10:00 e 10:30 pertencem a blocos de 30 min diferentes ("10:00" e "10:30"), portanto NUNCA há choque entre eles.
  */
-export function getIntervalSlot(timeStr: string): string {
+export function getIntervalSlot(timeStr: string, slotMinutes = 30): string {
   if (!timeStr) return '00:00';
   const clean = timeStr.trim();
   const [hStr, mStr] = clean.split(':');
@@ -72,7 +72,8 @@ export function getIntervalSlot(timeStr: string): string {
   if (isNaN(h)) return '00:00';
   const validM = isNaN(m) ? 0 : m;
   const slotH = String(h).padStart(2, '0');
-  const slotM = validM < 30 ? '00' : '30';
+  // Grade de 1h: todo horário pertence ao bloco da hora cheia (09:00 à 09:59 -> "09:00")
+  const slotM = slotMinutes >= 60 ? '00' : validM < 30 ? '00' : '30';
   return `${slotH}:${slotM}`;
 }
 
@@ -106,7 +107,8 @@ export function parsePatientsFromCellString(content: string): Array<{ name: stri
 export function findScheduleConflictsForDay(
   therapists: TherapistSchedule[],
   allTimeSlots: string[],
-  getCellContent?: (therapistId: string, time: string) => string
+  getCellContent?: (therapistId: string, time: string) => string,
+  slotMinutes = 30
 ): Map<string, DayConflict> {
   const conflictsMap = new Map<string, DayConflict>();
   if (!therapists || therapists.length === 0) return conflictsMap;
@@ -132,7 +134,7 @@ export function findScheduleConflictsForDay(
       therapist.appointments.forEach((a) => {
         const normPatient = normalizePatientName(a.patientName);
         if (!normPatient) return;
-        const slotTime = getIntervalSlot(a.time);
+        const slotTime = getIntervalSlot(a.time, slotMinutes);
         allBookings.push({
           therapistId: therapist.id,
           therapistName: therapist.name,
@@ -159,7 +161,7 @@ export function findScheduleConflictsForDay(
             const normPatient = normalizePatientName(p.name);
             if (!normPatient) return;
             const exactTime = p.exactTime || slotTime;
-            const bookingSlot = getIntervalSlot(exactTime);
+            const bookingSlot = getIntervalSlot(exactTime, slotMinutes);
             const normTherapist = normalizeTherapistName(therapist.name);
 
             const alreadyExists = allBookings.some(

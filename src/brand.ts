@@ -53,7 +53,39 @@ export const BRAND = {
   choqueDark: '#7f1d1d',
 } as const;
 
-export const FONT_FAMILY = `'Helvetica Neue', Helvetica, Arial, sans-serif`;
+export const FONT_FAMILY = `'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif`;
+export const FONT_PATH = `${import.meta.env.BASE_URL}fonts/inter-latin-wght-normal.woff2`;
+
+let fontFaceCssCache: string | null = null;
+
+/**
+ * @font-face da Inter com o arquivo embutido (data URL), para os arquivos gerados
+ * (HTML offline / PDF) usarem a mesma fonte mesmo sem internet.
+ */
+export async function getEmbeddedFontFaceCss(): Promise<string> {
+  if (fontFaceCssCache !== null) return fontFaceCssCache;
+  try {
+    const res = await fetch(FONT_PATH);
+    if (!res.ok) throw new Error('fonte');
+    const blob = await res.blob();
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+    fontFaceCssCache = `@font-face { font-family: 'Inter'; src: url(${dataUrl}) format('woff2'); font-weight: 100 900; font-style: normal; }`;
+  } catch {
+    fontFaceCssCache = '';
+  }
+  return fontFaceCssCache;
+}
+
+/** @font-face apontando para o arquivo da fonte (para janelas de impressão abertas pelo sistema). */
+export function fontFaceUrlCss(): string {
+  const url = new URL(FONT_PATH, window.location.href).href;
+  return `@font-face { font-family: 'Inter'; src: url('${url}') format('woff2'); font-weight: 100 900; font-style: normal; }`;
+}
 
 let logoDataUrlCache: string | null = null;
 

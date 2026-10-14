@@ -9,6 +9,7 @@ import {
   Trash2,
   UserCheck,
   Loader2,
+  Users,
 } from 'lucide-react';
 import { DayOfWeekKey, DAYS_OF_WEEK } from '../types';
 
@@ -35,6 +36,9 @@ interface SpreadsheetToolbarProps {
   hasAnyData: boolean;
   hasDayData: boolean;
   exporting: ExportKind | null;
+  slotMinutes: 30 | 60;
+  onChangeSlotMinutes: (value: 30 | 60) => void;
+  onOpenGroups: () => void;
 }
 
 export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
@@ -58,10 +62,13 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
   hasAnyData,
   hasDayData,
   exporting,
+  slotMinutes,
+  onChangeSlotMinutes,
+  onOpenGroups,
 }) => {
   const exportDisabled = !hasDayData || activeTherapistsCount === 0 || exporting !== null;
   const exportBtn =
-    'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40';
+    'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40';
 
   const spinnerOr = (kind: ExportKind, icon: React.ReactNode) =>
     exporting === kind ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : icon;
@@ -78,7 +85,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
               <button
                 key={key}
                 onClick={() => onSelectDay(key)}
-                className={`relative inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                className={`relative inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold ${
                   isSelected
                     ? 'bg-brand-700 text-white shadow-xs'
                     : hasData
@@ -96,15 +103,26 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
           })}
         </nav>
 
+        <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={onOpenGroups}
+          disabled={!hasDayData}
+          className="inline-flex items-center gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800 hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-40"
+          title="Todas as duplas e grupos do dia, com profissionais, pacientes, alertas e choques"
+        >
+          <Users className="h-4 w-4" />
+          Todas duplas/grupos
+        </button>
         <button
           onClick={onOpenPatientSearch}
           disabled={!hasAnyData}
-          className="inline-flex items-center gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800 transition-colors hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex items-center gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800 hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-40"
           title="Grade completa de um paciente (especialidades, profissionais e horários)"
         >
           <UserCheck className="h-4 w-4" />
           Grade do paciente
         </button>
+        </div>
       </div>
 
       {/* Ações */}
@@ -112,7 +130,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={onOpenUpload}
-            className="inline-flex items-center gap-2 rounded-lg bg-brand-700 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-brand-800"
+            className="inline-flex items-center gap-2 rounded-lg bg-brand-700 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-brand-800"
             title="Fazer upload de arquivos PS120108 (.htm ou .html) de segunda a sábado"
           >
             <Upload className="h-4 w-4" />
@@ -122,7 +140,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
           <button
             onClick={onOpenRoomConfig}
             disabled={!hasDayData}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-800 transition-colors hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-800 hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-40"
             title="Gerenciar quais terapeutas ocupam cada sala"
           >
             <SlidersHorizontal className="h-3.5 w-3.5 text-brand-700" />
@@ -132,7 +150,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
           {hasAnyData && (
             <button
               onClick={onClearData}
-              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-medium text-slate-500 transition-colors hover:bg-red-50 hover:text-red-700"
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-medium text-slate-500 hover:bg-red-50 hover:text-red-700"
               title="Remover todos os arquivos carregados e esvaziar a grade"
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -199,7 +217,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
         <div className="flex items-center gap-3">
           <button
             onClick={onToggleLunchPlaceholder}
-            className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors ${
+            className={`rounded-lg border px-2.5 py-1 text-xs font-semibold ${
               showLunchPlaceholder
                 ? 'border-brand-200 bg-brand-50 text-brand-950'
                 : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
@@ -208,8 +226,27 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
           >
             12h–13h: {showLunchPlaceholder ? 'legenda "ALMOÇO"' : 'células livres'}
           </button>
+          {/* Tamanho do horário da grade */}
+          <div className="inline-flex rounded-lg border border-brand-200 bg-white p-0.5" role="group" aria-label="Tamanho da grade">
+            {([30, 60] as const).map((value) => (
+              <button
+                key={value}
+                onClick={() => onChangeSlotMinutes(value)}
+                className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
+                  slotMinutes === value ? 'bg-brand-700 text-white' : 'text-brand-800 hover:bg-brand-50'
+                }`}
+                title={
+                  value === 60
+                    ? 'Junta os dois horários de 30 min: duplas, grupos e choques passam a ser avaliados de hora em hora'
+                    : 'Grade padrão de 30 em 30 minutos'
+                }
+              >
+                {value === 60 ? 'Grade de 1h' : 'Grade 30 min'}
+              </button>
+            ))}
+          </div>
           <span className="rounded-lg bg-accent-50 px-2.5 py-1 font-semibold text-accent-800 ring-1 ring-accent-200">
-            Grade 30 min · <strong className="text-accent-700">{totalAppointments}</strong> agendamentos
+            <strong className="text-accent-700">{totalAppointments}</strong> agendamentos
           </span>
         </div>
       </div>

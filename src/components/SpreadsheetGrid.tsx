@@ -16,6 +16,8 @@ interface SpreadsheetGridProps {
   onUpdateTherapistHeader: (therapistId: string, updates: Partial<TherapistSchedule>) => void;
   onAddCustomTime: (time: string, period: 'morning' | 'midday' | 'afternoon') => void;
   showLunchPlaceholder: boolean;
+  /** 30 = grade padrão; 60 = Grade de 1h */
+  slotMinutes?: number;
   hasReport: boolean;
   dayLabel: string;
   onOpenUpload: () => void;
@@ -54,6 +56,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
   onAddCustomTime,
   showLunchPlaceholder,
   hasReport,
+  slotMinutes = 30,
   dayLabel,
   onOpenUpload,
   onOpenRoomConfig,
@@ -159,8 +162,8 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
 
   // Compute all schedule conflicts (same patient in 2+ rooms at same time) for active therapists
   const conflictsMap = useMemo(() => {
-    return findScheduleConflictsForDay(activeTherapists, allGridTimes, getCellContent);
-  }, [activeTherapists, allGridTimes, getCellContent]);
+    return findScheduleConflictsForDay(activeTherapists, allGridTimes, getCellContent, slotMinutes);
+  }, [activeTherapists, allGridTimes, getCellContent, slotMinutes]);
 
   // ---------------------------------------------------------------------------
   // Empty state (antes do upload) e salas ocultas
@@ -181,7 +184,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
         </p>
         <button
           onClick={hasReport ? onOpenRoomConfig : onOpenUpload}
-          className="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white shadow-xs transition-colors hover:bg-brand-800"
+          className="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-brand-800"
         >
           {hasReport ? <EyeOff className="h-4 w-4" /> : <Upload className="h-4 w-4" />}
           {hasReport ? 'Organizar salas' : 'Fazer upload dos arquivos'}
@@ -255,7 +258,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     const content = getCellContent(therapist.id, time);
     const isEditing = editingCell?.therapistId === therapist.id && editingCell?.time === time;
     const highlighted = isMatch(content);
-    const analysis = analyzeCellSlot(content, therapist, time);
+    const analysis = analyzeCellSlot(content, therapist, time, slotMinutes);
     const isLunch = isMidday && !content && showLunchPlaceholder;
     const conflictingPatients = getConflictingPatientsForCell(
       conflictsMap,
@@ -295,7 +298,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     return (
       <td
         key={`cell-${therapist.id}-${time}`}
-        className={`relative border border-black py-1 px-1.5 align-middle transition-colors ${cellBgClass}`}
+        className={`relative border border-black py-1 px-1.5 align-middle ${cellBgClass}`}
         onClick={() => !isEditing && startEditCell(therapist.id, time)}
         title={cellTooltip}
       >
@@ -349,7 +352,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     <td
       key={`empty-${therapist.id}-${times[0]}`}
       rowSpan={times.length}
-      className="cursor-pointer border border-black bg-slate-50 align-middle text-center text-[1.05em] font-bold tracking-[0.2em] text-slate-400 transition-colors hover:bg-slate-100"
+      className="cursor-pointer border border-black bg-slate-50 align-middle text-center text-[1.05em] font-bold tracking-[0.2em] text-slate-400 hover:bg-slate-100"
       onClick={() => startEditCell(therapist.id, times[0])}
       title="Nenhum paciente neste turno - clique para adicionar"
     >

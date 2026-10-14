@@ -30,7 +30,7 @@ export const RoomConfigModal: React.FC<RoomConfigModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="flex max-h-[90vh] w-full max-w-3xl flex-col rounded-xl bg-white shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
@@ -67,7 +67,7 @@ export const RoomConfigModal: React.FC<RoomConfigModalProps> = ({
               return (
                 <div
                   key={therapist.id}
-                  className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 transition-colors ${
+                  className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 ${
                     isVisible ? 'border-gray-200 bg-white shadow-xs' : 'border-dashed border-gray-300 bg-gray-50 opacity-60'
                   }`}
                 >
@@ -134,7 +134,7 @@ export const RoomConfigModal: React.FC<RoomConfigModalProps> = ({
                   {/* Toggle view button */}
                   <button
                     onClick={() => onToggleVisibility(therapist.id)}
-                    className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                    className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium ${
                       isVisible
                         ? 'bg-brand-100 text-brand-800 hover:bg-brand-200'
                         : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
