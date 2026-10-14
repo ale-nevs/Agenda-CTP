@@ -1,13 +1,5 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { LOGO_PATH, handleLogoError } from '../brand';
-
-const THEME_STORAGE_KEY = 'agenda-ctp:tema';
-
-type Theme = 'light' | 'dark';
-
-function readTheme(): Theme {
-  return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
-}
 
 /* Ícones em linha (estilo Lucide/Feather), sem biblioteca */
 const IconCalendar = () => (
@@ -38,19 +30,6 @@ const IconCheck = () => (
   </svg>
 );
 
-const IconMoon = () => (
-  <svg className="ic sm" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-  </svg>
-);
-
-const IconSun = () => (
-  <svg className="ic sm" viewBox="0 0 24 24" aria-hidden="true">
-    <circle cx="12" cy="12" r="4" />
-    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
-  </svg>
-);
-
 interface AppHeaderProps {
   title: string;
   /** Razão social / unidade + CNPJ (ou subtítulo padrão) */
@@ -67,7 +46,11 @@ interface AppHeaderProps {
   conflictsCount: number;
 }
 
-/** Topo fixo do sistema: logo, título, unidade/CNPJ e chips de contexto. */
+/**
+ * Topo fixo do sistema: logo, título, unidade/CNPJ e chips de contexto.
+ * Estilos em src/index.css, restritos a `header.topo`. O container (largura e margens)
+ * e o posicionamento sticky são os mesmos usados antes pelo topo.
+ */
 export const AppHeader: React.FC<AppHeaderProps> = ({
   title,
   subtitle,
@@ -78,29 +61,16 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   showConflicts,
   conflictsCount,
 }) => {
-  const [theme, setTheme] = useState<Theme>(readTheme);
-
-  const toggleTheme = () => {
-    const next: Theme = theme === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
-    try {
-      localStorage.setItem(THEME_STORAGE_KEY, next);
-    } catch {
-      /* armazenamento indisponível */
-    }
-    setTheme(next);
-  };
-
   // Separadores do subtítulo no padrão "A · B · CNPJ: ..."
   const subtitleText = subtitle.replace(/\s+[-–]\s+/g, ' · ');
 
   return (
-    <header className="topo print:hidden">
-      <div className="wrap topo-in">
+    <header className="topo sticky top-0 z-40 print:hidden">
+      <div className="topo-in mx-auto max-w-[1600px] px-4 sm:px-6">
         <div className="marca">
           <img className="logo" src={LOGO_PATH} onError={handleLogoError} alt="Promédica" />
           <span className="div" aria-hidden="true" />
-          <div className="marca-txt">
+          <div className="min-w-0">
             <h1>{title}</h1>
             <p className="sub" title={subtitleText}>
               {subtitleText}
@@ -111,22 +81,14 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         <div className="topo-acoes">
           <span className="chip ctx" title={`Dia selecionado: ${dayLabel}${dateText ? ` · ${dateText}` : ''}`}>
             <IconCalendar />
-            <span className="chip-txt">
-              {dateText ? (
-                <>
-                  <span className="chip-dia">{dayLabel} · </span>
-                  {dateText}
-                </>
-              ) : (
-                dayLabel
-              )}
-            </span>
+            {dayLabel}
+            {dateText ? ` · ${dateText}` : ''}
           </span>
 
           {unitShort && (
-            <span className="chip unidade chip-acao" title={unitFullName || unitShort} aria-label={unitShort}>
+            <span className="chip unidade" title={unitFullName || unitShort}>
               <IconBuilding />
-              <span className="chip-txt">{unitShort}</span>
+              {unitShort}
             </span>
           )}
 
@@ -134,24 +96,14 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             (conflictsCount > 0 ? (
               <span className="chip alerta" title="Choques de horário no dia">
                 <IconAlert />
-                <span className="chip-txt">{conflictsCount} choque(s)</span>
+                {conflictsCount} choque(s)
               </span>
             ) : (
               <span className="chip ok" title="Nenhum choque de horário no dia">
                 <IconCheck />
-                <span className="chip-txt">Sem choques</span>
+                Sem choques
               </span>
             ))}
-
-          <button
-            type="button"
-            className="chip tema chip-icone"
-            onClick={toggleTheme}
-            aria-label="Alternar tema"
-            title="Alternar entre modo claro e escuro"
-          >
-            {theme === 'dark' ? <IconSun /> : <IconMoon />}
-          </button>
         </div>
       </div>
     </header>

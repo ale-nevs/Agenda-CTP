@@ -12,7 +12,7 @@
 
 /* Identidade visual (espelhada em src/brand.ts) */
 @theme {
-  --font-sans: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-sans: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
 
   /* Paleta executiva (saúde)
      brand  = azul-marinho: estrutura, cabeçalhos, selecionado (700) e selecionável (50/100)
@@ -42,84 +42,101 @@
   --color-accent-900: #12403b;
 }
 
-/* ===================== Tokens do topo (tema claro) ===================== */
-:root {
-  --fs-xs: 11.5px; --fs-sm: 12.5px; --fs-md: 14px; --fs-lg: 16px; --fs-xl: 19px;
-  --r-sm: 8px; --r: 12px; --h-ctl: 34px; --h-sm: 28px;
-  --bg: #f4f6f9; --surface: #ffffff; --surface-2: #f8fafc; --surface-3: #eef2f7;
-  --border: #e2e8f0; --text: #1c2431; --text-2: #566174;
-  --soft: #f2f6fb; --soft-2: #e1eaf4; --soft-br: #c5d5e8; --soft-fg: #233c5c;
-  --accent: #17786b; --accent-bg: #effaf8; --accent-br: #a7e0d5; --accent-fg: #155f56;
-  --bad-bg: #fef2f2; --bad-fg: #7f1d1d; --bad-br: #fca5a5; --bad-solid: #dc2626;
-  --ok-bg: #ecfdf5; --ok-fg: #166534; --ok-br: #86efac;
-  --warn-bg: #fffbeb; --warn-fg: #78350f; --warn-br: #fcd34d;
-  --shadow: 0 1px 2px rgba(15, 23, 42, .06), 0 1px 3px rgba(15, 23, 42, .04);
-}
-
-/* Tema escuro */
-:root[data-theme="dark"] {
-  --bg: #0e1420; --surface: #151c2a; --surface-2: #1a2333; --surface-3: #212c40;
-  --border: #2a3550; --text: #e7ebf3; --text-2: #a6b1c4;
-  --soft: #1b2a42; --soft-2: #243652; --soft-br: #37507a; --soft-fg: #d3e2f6;
-  --accent: #3aae9c; --accent-bg: #11302d; --accent-br: #1f5e55; --accent-fg: #8fe0d2;
-}
-
-/* ===================== Topo (cabeçalho) ===================== */
-header.topo { background: var(--surface); border-bottom: 1px solid var(--border); box-shadow: var(--shadow); position: sticky; top: 0; z-index: 30; font-family: var(--font-sans); }
-.topo .wrap { width: 100%; max-width: 1600px; margin: 0 auto; padding-left: 12px; padding-right: 12px; }
-.topo-in { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; padding-top: 10px; padding-bottom: 10px; min-width: 0; }
-.marca { display: flex; align-items: center; min-width: 0; }
-.marca-txt { min-width: 0; }
-.marca .logo { height: 40px; width: auto; display: block; flex: none; margin-right: 12px; }
-:root[data-theme="dark"] .marca .logo { filter: brightness(1.25) contrast(1.05); }
-.marca .div { width: 1px; height: 36px; background: var(--border); margin: 0 16px; display: none; flex: none; }
-.marca h1 { font-size: var(--fs-xl); font-weight: 750; color: var(--soft-fg); letter-spacing: -.015em; line-height: 1.2; margin: 0; }
-.marca .sub { margin-top: 2px; font-size: var(--fs-xs); font-weight: 650; text-transform: uppercase; letter-spacing: .12em; color: var(--accent); overflow-wrap: anywhere; }
-.topo-acoes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-left: auto; min-width: 0; }
-
-/* Chips = "botões" do topo */
-.topo .chip { display: inline-flex; align-items: center; gap: 7px; min-height: var(--h-ctl); border-radius: var(--r-sm); padding: 0 11px; font-size: var(--fs-sm); font-weight: 600; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); white-space: nowrap; line-height: 1; }
-.topo .chip.ctx { background: var(--soft); border-color: var(--soft-br); color: var(--soft-fg); }
-.topo .chip.unidade { background: var(--accent-bg); border-color: var(--accent-br); color: var(--accent-fg); }
-.topo .chip.alerta { background: var(--bad-solid); border-color: var(--bad-solid); color: #fff; }
-.topo .chip.ok { background: var(--ok-bg); border-color: var(--ok-br); color: var(--ok-fg); }
-.topo button.chip { cursor: pointer; }
-.topo button.chip:hover { background: var(--soft-2); }
-.topo button.chip:active { transform: translateY(1px); }
-.topo .chip.tema { padding: 0 10px; }
-/* Botão só com ícone (quadrado) */
-.topo .chip.chip-icone { min-width: 34px; padding: 0 9px; justify-content: center; }
-
-/* Ícones em linha */
-.ic { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.ic.sm { width: 14px; height: 14px; }
-
-@media (min-width: 640px) {
-  .topo .wrap { padding-left: 24px; padding-right: 24px; }
-  .marca .div { display: block; }
-  .marca .logo { margin-right: 0; }
-}
-
-@media (max-width: 560px) {
-  .marca .logo { height: 30px; }
-  .marca h1 { font-size: 16px; }
-  .marca .sub { font-size: 10px; letter-spacing: .06em; }
-  .topo-in { padding-top: 6px; padding-bottom: 6px; gap: 6px 10px; }
-  .topo-acoes { width: 100%; justify-content: flex-end; gap: 5px; }
-  /* Chips de ação ficam só com o ícone; data e choques mantêm o texto */
-  .topo .chip.chip-acao { min-width: 34px; padding: 0 9px; justify-content: center; }
-  .topo .chip.chip-acao .chip-txt { display: none; }
-}
-
-@media (max-width: 400px) {
-  /* Telas muito estreitas: o chip de data mostra só a data */
-  .topo .chip .chip-dia { display: none; }
-}
-
 html, body {
   font-family: var(--font-sans);
   background-color: #f4f6f9;
 }
+
+/* ===== Topo (cabeçalho) — estilos restritos a header.topo ===== */
+header.topo {
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --border: #e2e8f0;
+  --text: #1c2431;
+  --soft: #f2f6fb;
+  --soft-2: #e1eaf4;
+  --soft-br: #c5d5e8;
+  --soft-fg: #233c5c;
+  --accent: #17786b;
+  --accent-bg: #effaf8;
+  --accent-br: #a7e0d5;
+  --accent-fg: #155f56;
+  --bad-solid: #dc2626;
+  --ok-bg: #ecfdf5;
+  --ok-fg: #166534;
+  --ok-br: #86efac;
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+header.topo .topo-in {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 20px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+header.topo .marca { display: flex; align-items: center; min-width: 0; }
+header.topo .logo { height: 40px; width: auto; display: block; }
+header.topo .div { width: 1px; height: 36px; background: var(--border); margin: 0 16px; }
+header.topo h1 {
+  font-size: 19px;
+  font-weight: 750;
+  color: var(--soft-fg);
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  margin: 0;
+}
+header.topo .sub {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+}
+header.topo .topo-acoes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-left: auto; }
+
+/* chips = "botões" do topo */
+header.topo .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  border-radius: 8px;
+  padding: 0 11px;
+  font-size: 12.5px;
+  font-weight: 600;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  line-height: 1;
+}
+header.topo .chip.ctx { background: var(--soft); border-color: var(--soft-br); color: var(--soft-fg); }
+header.topo .chip.unidade { background: var(--accent-bg); border-color: var(--accent-br); color: var(--accent-fg); }
+header.topo .chip.alerta { background: var(--bad-solid); border-color: var(--bad-solid); color: #fff; }
+header.topo .chip.ok { background: var(--ok-bg); border-color: var(--ok-br); color: var(--ok-fg); }
+header.topo button.chip { cursor: pointer; }
+header.topo button.chip:hover { background: var(--soft-2); }
+header.topo button.chip:active { transform: translateY(1px); }
+header.topo button.chip.icon-only { min-width: 34px; padding: 0 9px; justify-content: center; }
+
+/* ícones (SVG inline, estilo linha) */
+header.topo .ic {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+header.topo .ic.sm { width: 14px; height: 14px; }
 
 @media print {
   @page {
