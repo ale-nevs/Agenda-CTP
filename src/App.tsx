@@ -6,6 +6,7 @@ import { UploadModal } from './components/UploadModal';
 import { RoomConfigModal } from './components/RoomConfigModal';
 import { PatientScheduleModal } from './components/PatientScheduleModal';
 import { GroupsModal, GroupSlotItem } from './components/GroupsModal';
+import { AppHeader } from './components/AppHeader';
 import { analyzeCellSlot } from './utils/clinicalAlerts';
 import { getUnitInfo } from './utils/unitInfo';
 import { exportStandaloneHtml, exportExcel, exportPdf, ExportTableData } from './utils/exportUtils';
@@ -18,7 +19,7 @@ import {
   parsePatientsFromCellString,
 } from './utils/conflictUtils';
 import { APP_NAME, APP_SUBTITLE, LOGO_PATH, handleLogoError } from './brand';
-import { Calendar, Info, AlertTriangle, Zap } from 'lucide-react';
+import { Info, AlertTriangle, Zap } from 'lucide-react';
 
 const EMPTY_WEEKLY_REPORTS: Record<DayOfWeekKey, ParsedReport | null> = {
   SEGUNDA: null,
@@ -444,49 +445,16 @@ export default function App() {
     <div className="min-h-screen bg-[#f4f7fb] pb-12 text-slate-900 print:bg-white print:p-0">
       {/* Cabeçalho */}
       {/* Topo fixo */}
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white shadow-xs print:hidden">
-        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-4">
-            <img src={LOGO_PATH} onError={handleLogoError} alt="Promédica" className="h-11 w-auto" />
-            <div className="hidden h-9 w-px bg-slate-200 sm:block" />
-            <div>
-              <h1 className="text-lg font-extrabold leading-tight tracking-tight text-brand-800">{APP_NAME}</h1>
-              <p className="text-xs font-semibold uppercase tracking-wider text-accent-600" title={clinicName ? 'Identificado no arquivo enviado' : undefined}>
-                {unitInfo?.subtitle || APP_SUBTITLE}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="inline-flex items-center gap-1.5 rounded-lg bg-brand-50 px-2.5 py-1.5 font-semibold text-brand-950">
-              <Calendar className="h-3.5 w-3.5" />
-              {report.dayOfWeek}
-              {report.date ? ` · ${report.date}` : ''}
-            </span>
-            {unitInfo && (
-              <span
-                className="rounded-lg bg-accent-50 px-2.5 py-1.5 font-bold tracking-wide text-accent-700 ring-1 ring-accent-200"
-                title={unitInfo.fullName}
-              >
-                {unitInfo.short}
-              </span>
-            )}
-            {hasDayData && (
-              <>
-                <span
-                  className={`rounded-lg px-2.5 py-1.5 font-semibold ${
-                    dayConflictsList.length > 0
-                      ? 'bg-red-600 text-white'
-                      : 'bg-green-50 text-green-700 ring-1 ring-green-100'
-                  }`}
-                >
-                  {dayConflictsList.length > 0 ? `${dayConflictsList.length} choque(s)` : 'Sem choques'}
-                </span>
-              </>
-            )}
-          </div>
-        </div>
-      </header>
+      <AppHeader
+        title={APP_NAME}
+        subtitle={unitInfo?.subtitle || APP_SUBTITLE}
+        dayLabel={report.dayOfWeek}
+        dateText={report.date}
+        unitShort={unitInfo?.short}
+        unitFullName={unitInfo?.fullName}
+        showConflicts={hasDayData}
+        conflictsCount={dayConflictsList.length}
+      />
 
       <main className="mx-auto max-w-[1600px] space-y-3 px-3 py-4 sm:px-6">
         {/* Toolbar */}
