@@ -1,16 +1,9 @@
-/* 1. Declaração da fonte local */
-@font-face {
-  font-family: "Inter";
-  src: url("/inter-latin-wght-normal.woff2") format("woff2");
-  font-weight: 100 900; /* Variação de peso se for fonte variável */
-  font-style: normal;
-  font-display: swap;
-}
+@import "tailwindcss";
 
 /* Identidade visual (espelhada em src/brand.ts) */
 @theme {
-  /* 2. Definindo Inter como fonte sans principal */
-  --font-sans: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  /* Fonte do site promedica.com.br (font-helvetica) */
+  --font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
 
   /* Paleta executiva (saúde)
      brand  = azul-marinho: estrutura, cabeçalhos, selecionado (700) e selecionável (50/100)
