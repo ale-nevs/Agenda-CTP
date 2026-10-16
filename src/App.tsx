@@ -6,6 +6,7 @@ import { UploadModal } from './components/UploadModal';
 import { RoomConfigModal } from './components/RoomConfigModal';
 import { PatientScheduleModal } from './components/PatientScheduleModal';
 import { GroupsModal, GroupSlotItem } from './components/GroupsModal';
+import { ConflictsModal, ConflictItem } from './components/ConflictsModal';
 import { AppHeader } from './components/AppHeader';
 import { analyzeCellSlot } from './utils/clinicalAlerts';
 import { getUnitInfo } from './utils/unitInfo';
@@ -88,6 +89,7 @@ export default function App() {
   const [isRoomConfigOpen, setIsRoomConfigOpen] = useState(false);
   const [isPatientSearchOpen, setIsPatientSearchOpen] = useState(false);
   const [isGroupsOpen, setIsGroupsOpen] = useState(false);
+  const [isConflictsOpen, setIsConflictsOpen] = useState(false);
 
   // When reports are uploaded via batch or single upload
   const handleWeeklyReportsLoaded = (newReports: Partial<Record<DayOfWeekKey, ParsedReport>>) => {
@@ -362,6 +364,39 @@ export default function App() {
   // Unidade identificada no arquivo: subtítulo com CNPJ e sigla (ex.: "CTP GARIBALDI")
   const unitInfo = useMemo(() => getUnitInfo(clinicName), [clinicName]);
 
+  // Todos os choques do dia, com o tipo de atendimento de cada profissional (calculado só com a janela aberta)
+  const conflictItems = useMemo<ConflictItem[]>(() => {
+    if (!isConflictsOpen) return [];
+    const byId = new Map(activeTherapists.map((t) => [t.id, t]));
+    return [...dayConflictsList]
+      .sort((a, b) => a.slotTime.localeCompare(b.slotTime) || a.patientName.localeCompare(b.patientName))
+      .map((c) => ({
+        key: c.key,
+        slotTime: c.slotTime,
+        patientName: c.patientName,
+        bookings: c.bookings.map((b) => {
+          const therapist = byId.get(b.therapistId);
+          const content = therapist ? getCellContent(therapist.id, c.slotTime) : '';
+          const analysis = therapist && content ? analyzeCellSlot(content, therapist, c.slotTime, slotMinutes) : null;
+          const norm = normalizePatientName(c.patientName);
+          const me = analysis?.patients.find((p) => normalizePatientName(p.name) === norm);
+          const count = analysis?.count || 1;
+          return {
+            roomName: b.roomName,
+            therapistName: b.therapistName,
+            specialty: b.specialty || therapist?.specialty || '',
+            exactTime: b.exactTime,
+            kind: count > 2 ? 'Grupo' : count === 2 ? 'Dupla' : 'Individual',
+            count,
+            companions: (analysis?.patients || [])
+              .filter((p) => normalizePatientName(p.name) !== norm)
+              .map((p) => `${p.name}${p.exactTime ? ` (${p.exactTime})` : ''}`),
+            protocolLabel: me?.isPromptOrAyres ? (me.alertType === 'TO AYRES' ? 'Ayres' : 'Prompt') : undefined,
+          } as ConflictItem['bookings'][number];
+        }),
+      }));
+  }, [isConflictsOpen, dayConflictsList, activeTherapists, getCellContent, slotMinutes]);
+
   // Todas as duplas e grupos do dia (calculado só com a janela aberta)
   const groupItems = useMemo<GroupSlotItem[]>(() => {
     if (!isGroupsOpen) return [];
@@ -483,6 +518,8 @@ export default function App() {
             slotMinutes={slotMinutes}
             onChangeSlotMinutes={setSlotMinutes}
             onOpenGroups={() => setIsGroupsOpen(true)}
+            onOpenConflicts={() => setIsConflictsOpen(true)}
+            conflictsCount={dayConflictsList.length}
           />
         </div>
 
@@ -593,6 +630,19 @@ export default function App() {
         weeklyReports={weeklyReports}
         initialDay={activeDay}
         slotMinutes={slotMinutes}
+      />
+
+      {/* Todos os choques do dia */}
+      <ConflictsModal
+        isOpen={isConflictsOpen}
+        onClose={() => setIsConflictsOpen(false)}
+        items={conflictItems}
+        dayLabel={report.dayOfWeek}
+        date={report.date}
+        slotMinutes={slotMinutes}
+        activeDay={activeDay}
+        onSelectDay={setActiveDay}
+        daysWithData={daysWithData}
       />
 
       {/* Todas as duplas e grupos do dia */}
