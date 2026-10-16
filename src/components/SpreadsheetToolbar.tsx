@@ -10,6 +10,7 @@ import {
   UserCheck,
   Loader2,
   Users,
+  Zap,
 } from 'lucide-react';
 import { DayOfWeekKey, DAYS_OF_WEEK } from '../types';
 
@@ -39,6 +40,8 @@ interface SpreadsheetToolbarProps {
   slotMinutes: 30 | 60;
   onChangeSlotMinutes: (value: 30 | 60) => void;
   onOpenGroups: () => void;
+  onOpenConflicts: () => void;
+  conflictsCount: number;
 }
 
 export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
@@ -65,6 +68,8 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
   slotMinutes,
   onChangeSlotMinutes,
   onOpenGroups,
+  onOpenConflicts,
+  conflictsCount,
 }) => {
   const exportDisabled = !hasDayData || activeTherapistsCount === 0 || exporting !== null;
   const exportBtn =
@@ -112,6 +117,24 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
         >
           <Users className="h-4 w-4" />
           Todas duplas/grupos
+        </button>
+        <button
+          onClick={onOpenConflicts}
+          disabled={!hasDayData}
+          className="inline-flex items-center gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800 hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-40"
+          title="Todos os choques de horário do dia: paciente, profissionais, especialidades e se era dupla ou grupo"
+        >
+          <Zap className="h-4 w-4" />
+          Todos os choques
+          {hasDayData && (
+            <span
+              className={`min-w-[20px] rounded-full px-1.5 py-0.5 text-center text-[10px] font-extrabold ${
+                conflictsCount > 0 ? 'bg-red-600 text-white' : 'bg-green-100 text-green-700'
+              }`}
+            >
+              {conflictsCount}
+            </span>
+          )}
         </button>
         <button
           onClick={onOpenPatientSearch}

@@ -13,6 +13,21 @@ import {
 } from 'lucide-react';
 import { parseOracleReportsHtml, normalizeDayOfWeek } from '../utils/parser';
 import { ParsedReport, DayOfWeekKey, DAYS_OF_WEEK } from '../types';
+import { readReportFileText, splitWeeklyReport } from '../utils/weeklySplit';
+
+/**
+ * Arquivo único com várias datas (ex.: segunda a sábado): um relatório por dia.
+ * Retorna null quando o conteúdo tem uma data só.
+ */
+function parseWeeklyContent(text: string, fileName?: string): Array<{ dayKey: DayOfWeekKey; date: string; parsed: ParsedReport }> | null {
+  const chunks = splitWeeklyReport(text);
+  if (!chunks) return null;
+  return chunks
+    .map((c) => ({ dayKey: c.dayKey, date: c.date, parsed: parseOracleReportsHtml(c.html, fileName) }))
+    .filter((d) => d.parsed.therapists.length > 0);
+}
+
+const dayLabelOf = (key: DayOfWeekKey) => DAYS_OF_WEEK.find((d) => d.key === key)?.fullLabel || key;
 
 interface FileDayPreview {
   file: File;
@@ -64,7 +79,27 @@ export const UploadModal: React.FC<UploadModalProps> = ({
           throw new Error(`O arquivo "${file.name}" não é um arquivo .htm ou .html válido. Por favor, envie exclusivamente arquivos .htm.`);
         }
 
-        const text = await file.text();
+        const text = await readReportFileText(file);
+
+        // Arquivo único da semana: separa um relatório por data
+        const weekly = parseWeeklyContent(text, file.name);
+        if (weekly) {
+          if (weekly.length === 0) {
+            throw new Error(`Nenhum atendimento ou terapeuta foi encontrado em "${file.name}". Verifique se o arquivo corresponde ao relatório do sistema (PS120108).`);
+          }
+          weekly.forEach((d) => {
+            previews.push({
+              file,
+              name: `${file.name} · ${dayLabelOf(d.dayKey)} ${d.date}`,
+              detectedDay: d.dayKey,
+              parsed: d.parsed,
+              therapistsCount: d.parsed.therapists.length,
+              appointmentsCount: d.parsed.therapists.reduce((acc, t) => acc + t.appointments.length, 0),
+            });
+          });
+          continue;
+        }
+
         const parsed = parseOracleReportsHtml(text, file.name);
 
         if (parsed.therapists.length === 0) {
@@ -164,7 +199,20 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     setErrorMsg(null);
 
     try {
-      const text = await file.text();
+      const text = await readReportFileText(file);
+
+      // Arquivo único da semana: carrega todos os dias encontrados
+      const weekly = parseWeeklyContent(text, file.name);
+      if (weekly && weekly.length > 0) {
+        const map: Partial<Record<DayOfWeekKey, ParsedReport>> = {};
+        weekly.forEach((d) => {
+          map[d.dayKey] = d.parsed;
+        });
+        onWeeklyReportsLoaded(map);
+        onClose();
+        return;
+      }
+
       const parsed = parseOracleReportsHtml(text, file.name);
       if (parsed.therapists.length === 0) {
         throw new Error('Nenhum atendimento ou terapeuta foi encontrado. Verifique se é o arquivo PS120108.');
@@ -189,6 +237,18 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     setErrorMsg(null);
 
     try {
+      // Código de um relatório com várias datas: carrega todos os dias encontrados
+      const weekly = parseWeeklyContent(pastedHtml);
+      if (weekly && weekly.length > 0) {
+        const map: Partial<Record<DayOfWeekKey, ParsedReport>> = {};
+        weekly.forEach((d) => {
+          map[d.dayKey] = d.parsed;
+        });
+        onWeeklyReportsLoaded(map);
+        onClose();
+        return;
+      }
+
       const parsed = parseOracleReportsHtml(pastedHtml);
       if (parsed.therapists.length === 0) {
         throw new Error('Nenhum atendimento ou terapeuta foi encontrado no HTML colado.');
@@ -303,7 +363,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                     Arraste todos os arquivos .HTM da semana aqui
                   </h3>
                   <p className="mt-1 max-w-md text-xs text-gray-500">
-                    Você pode selecionar de 1 até 6 arquivos simultaneamente (Segunda à Sábado). O sistema detectará o dia da semana automaticamente de cada relatório.
+                    Envie um arquivo único com a semana inteira (segunda a sábado) ou de 1 até 6 arquivos, um por dia. O sistema identifica o dia de cada agenda pela data do relatório.
                   </p>
 
                   <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-brand-700 px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-brand-800">
@@ -448,7 +508,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                   Selecione o arquivo .HTM para {DAYS_OF_WEEK.find((d) => d.key === targetSingleDay)?.fullLabel}
                 </h3>
                 <p className="mt-1 text-xs text-gray-500">
-                  O relatório substituirá a grade de {targetSingleDay}.
+                  O relatório substituirá a grade de {targetSingleDay}. Se o arquivo tiver várias datas, todos os dias encontrados serão carregados.
                 </p>
 
                 <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-brand-700 px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-brand-800">
