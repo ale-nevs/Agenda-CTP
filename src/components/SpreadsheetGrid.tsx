@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { TherapistSchedule } from '../types';
 import { Plus, Edit2, Check, X, ZoomIn, ZoomOut, Users, Zap, Maximize2, Upload, FileSpreadsheet, EyeOff, Map as MapIcon, Repeat } from 'lucide-react';
 import { analyzeCellSlot } from '../utils/clinicalAlerts';
-import { findScheduleConflictsForDay, getConflictingPatientsForCell } from '../utils/conflictUtils';
+import { DayConflict, findScheduleConflictsForDay, getConflictingPatientsForCell } from '../utils/conflictUtils';
 import { PatientCellDisplay } from './PatientCellDisplay';
 import { RoomColumn } from '../utils/roomMap';
 
@@ -27,6 +27,10 @@ interface SpreadsheetGridProps {
   roomColumns?: RoomColumn[] | null;
   onOpenRoomMap?: () => void;
   onUseBasicView?: () => void;
+  /** Choques do dia já calculados (com a sala de cada profissional na visualização atual) */
+  conflictsMap?: Map<string, DayConflict>;
+  /** Profissionais consideradas nesses choques */
+  conflictTherapists?: TherapistSchedule[];
 }
 
 /** Coluna da grade: na visualização básica, a mesma profissional nos dois turnos. */
@@ -79,6 +83,8 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
   roomColumns = null,
   onOpenRoomMap,
   onUseBasicView,
+  conflictsMap: conflictsMapProp,
+  conflictTherapists,
 }) => {
   // Editing state for cells
   const [editingCell, setEditingCell] = useState<{ therapistId: string; time: string } | null>(null);
@@ -204,9 +210,12 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
   );
 
   // Compute all schedule conflicts (same patient in 2+ rooms at same time) for active therapists
-  const conflictsMap = useMemo(() => {
+  const localConflictsMap = useMemo(() => {
+    if (conflictsMapProp) return null;
     return findScheduleConflictsForDay(gridTherapists, allGridTimes, getCellContent, slotMinutes);
-  }, [gridTherapists, allGridTimes, getCellContent, slotMinutes]);
+  }, [conflictsMapProp, gridTherapists, allGridTimes, getCellContent, slotMinutes]);
+  const conflictsMap = conflictsMapProp || localConflictsMap || new Map<string, DayConflict>();
+  const lookupTherapists = conflictTherapists || gridTherapists;
 
   // ---------------------------------------------------------------------------
   // Empty state (antes do upload) e salas ocultas
@@ -386,7 +395,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     const isLunch = isMidday && !content && showLunchPlaceholder;
     const conflictingPatients = getConflictingPatientsForCell(
       conflictsMap,
-      gridTherapists,
+      lookupTherapists,
       therapist.id,
       time,
       analysis.patients.map((p) => p.name),

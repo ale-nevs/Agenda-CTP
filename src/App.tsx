@@ -11,7 +11,7 @@ import { AppHeader } from './components/AppHeader';
 import { CapacityModal } from './components/CapacityModal';
 import { RoomMapModal } from './components/RoomMapModal';
 import { CapacityIgnoreConfig, computeCapacity, DEFAULT_CAPACITY_IGNORE } from './utils/capacity';
-import { buildRoomColumns, RoomMapDay, RoomMaps, roomOf, RoomTags } from './utils/roomMap';
+import { buildRoomColumns, isHiddenInMap, RoomMapDay, RoomMaps, roomOf, RoomTags } from './utils/roomMap';
 import { downloadAgendaBackup, readAgendaBackup } from './utils/agendaBackup';
 import { analyzeCellSlot } from './utils/clinicalAlerts';
 import { getUnitInfo } from './utils/unitInfo';
@@ -22,6 +22,7 @@ import {
   getConflictingPatientsForCell,
   getIntervalSlot,
   normalizePatientName,
+  normalizeTherapistName,
   parsePatientsFromCellString,
 } from './utils/conflictUtils';
 import { APP_NAME, APP_SUBTITLE, LOGO_PATH, handleLogoError } from './brand';
@@ -433,9 +434,37 @@ export default function App() {
     return [...morningTimes, ...middayTimes, ...afternoonTimes];
   }, [morningTimes, middayTimes, afternoonTimes]);
 
+  // Visualização Mapa de sala: colunas por sala conforme o mapa do dia
+  const roomColumns = useMemo(
+    () => (viewMode === 'mapa' ? buildRoomColumns(roomMaps[activeDay], report.therapists, mergedTherapists, roomTags) : null),
+    [viewMode, roomMaps, activeDay, report, mergedTherapists, roomTags]
+  );
+  // Mapa de sala em uso (montado para o dia): a sala de cada profissional vem do mapa e muda entre manhã e tarde
+  const mapActive = Boolean(roomColumns && roomColumns.length > 0);
+  const roomNameAt = useMemo(() => {
+    if (!roomColumns || roomColumns.length === 0) return undefined;
+    const manha = new Map<string, string>();
+    const tarde = new Map<string, string>();
+    roomColumns.forEach((c) => {
+      if (c.morning) manha.set(c.morning.id, c.roomName);
+      if (c.afternoon) tarde.set(c.afternoon.id, c.roomName);
+    });
+    return (therapistId: string, time: string) => (time < '13:00' ? manha : tarde).get(therapistId) || 'SEM SALA';
+  }, [roomColumns]);
+
+  // Profissionais consideradas nos choques e nas duplas/grupos: visíveis em "Revisar salas" ou, no Mapa de sala, visíveis no mapa
+  const conflictTherapists = useMemo(() => {
+    const map = roomMaps[activeDay];
+    if (!mapActive || !map) return activeTherapists;
+    const hiddenIds = new Set(dayHiddenRooms[activeDay] || []);
+    const baseName = new Map(report.therapists.map((t) => [t.id, normalizeTherapistName(t.name)]));
+    const defaultHidden = new Set(report.therapists.filter((t) => hiddenIds.has(t.id)).map((t) => normalizeTherapistName(t.name)));
+    return mergedTherapists.filter((t) => !isHiddenInMap(map, baseName.get(t.id) || '', defaultHidden));
+  }, [mapActive, roomMaps, activeDay, activeTherapists, dayHiddenRooms, report, mergedTherapists]);
+
   const conflictsMap = useMemo(() => {
-    return findScheduleConflictsForDay(activeTherapists, allTimeSlots, getCellContent, slotMinutes);
-  }, [activeTherapists, allTimeSlots, getCellContent, slotMinutes]);
+    return findScheduleConflictsForDay(conflictTherapists, allTimeSlots, getCellContent, slotMinutes, roomNameAt);
+  }, [conflictTherapists, allTimeSlots, getCellContent, slotMinutes, roomNameAt]);
 
   const dayConflictsList = useMemo(() => {
     return getAllDayConflicts(conflictsMap);
@@ -447,7 +476,7 @@ export default function App() {
   // Todos os choques do dia, com o tipo de atendimento de cada profissional (calculado só com a janela aberta)
   const conflictItems = useMemo<ConflictItem[]>(() => {
     if (!isConflictsOpen) return [];
-    const byId = new Map(activeTherapists.map((t) => [t.id, t]));
+    const byId = new Map(conflictTherapists.map((t) => [t.id, t]));
     return [...dayConflictsList]
       .sort((a, b) => a.slotTime.localeCompare(b.slotTime) || a.patientName.localeCompare(b.patientName))
       .map((c) => ({
@@ -475,7 +504,7 @@ export default function App() {
           } as ConflictItem['bookings'][number];
         }),
       }));
-  }, [isConflictsOpen, dayConflictsList, activeTherapists, getCellContent, slotMinutes]);
+  }, [isConflictsOpen, dayConflictsList, conflictTherapists, getCellContent, slotMinutes]);
 
   // Todas as duplas e grupos do dia (calculado só com a janela aberta)
   const groupItems = useMemo<GroupSlotItem[]>(() => {
@@ -483,14 +512,14 @@ export default function App() {
     const list: GroupSlotItem[] = [];
     const middaySet = new Set(middayTimes);
     allTimeSlots.forEach((time) => {
-      activeTherapists.forEach((therapist) => {
+      conflictTherapists.forEach((therapist) => {
         const content = getCellContent(therapist.id, time);
         if (!content) return;
         const analysis = analyzeCellSlot(content, therapist, time, slotMinutes);
         if (!analysis.isMultiple) return;
         const conflicting = getConflictingPatientsForCell(
           conflictsMap,
-          activeTherapists,
+          conflictTherapists,
           therapist.id,
           time,
           analysis.patients.map((p) => p.name),
@@ -499,7 +528,7 @@ export default function App() {
         list.push({
           key: `${therapist.id}-${time}${middaySet.has(time) ? '-m' : ''}`,
           time,
-          roomName: therapist.roomName,
+          roomName: roomNameAt ? roomNameAt(therapist.id, time) : therapist.roomName,
           therapistName: therapist.name,
           specialty: therapist.specialty,
           count: analysis.count,
@@ -518,13 +547,8 @@ export default function App() {
       });
     });
     return list;
-  }, [isGroupsOpen, allTimeSlots, middayTimes, activeTherapists, getCellContent, slotMinutes, conflictsMap]);
+  }, [isGroupsOpen, allTimeSlots, middayTimes, conflictTherapists, getCellContent, slotMinutes, conflictsMap, roomNameAt]);
 
-  // Visualização Mapa de sala: colunas por sala conforme o mapa do dia
-  const roomColumns = useMemo(
-    () => (viewMode === 'mapa' ? buildRoomColumns(roomMaps[activeDay], report.therapists, mergedTherapists, roomTags) : null),
-    [viewMode, roomMaps, activeDay, report, mergedTherapists, roomTags]
-  );
   const capacityRooms = useMemo(
     () =>
       roomColumns && roomColumns.length > 0
@@ -635,10 +659,12 @@ export default function App() {
     morningTimes,
     middayTimes,
     afternoonTimes,
-    activeTherapists,
+    activeTherapists: mapActive ? conflictTherapists : activeTherapists,
     getCellContent,
     showLunchPlaceholder,
     slotMinutes,
+    roomColumns: mapActive ? roomColumns : null,
+    roomNameAt,
   });
 
   const runExport = async (kind: ExportKind, fn: (data: ExportTableData) => Promise<void>) => {
@@ -760,6 +786,8 @@ export default function App() {
           onOpenUpload={() => setIsUploadOpen(true)}
           onOpenRoomConfig={() => setIsRoomConfigOpen(true)}
           roomColumns={roomColumns}
+          conflictsMap={conflictsMap}
+          conflictTherapists={conflictTherapists}
           onOpenRoomMap={() => setIsRoomMapOpen(true)}
           onUseBasicView={() => setViewMode('basica')}
         />
