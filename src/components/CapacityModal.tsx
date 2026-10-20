@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { X, Gauge, Info, Users, User, CircleDashed, DoorOpen, EyeOff, Plus, Map as MapIcon } from 'lucide-react';
+import { X, Gauge, Info, Users, User, CircleDashed, DoorOpen, EyeOff, Plus, Map as MapIcon, ArrowRight } from 'lucide-react';
 import { DayOfWeekKey, DAYS_OF_WEEK, TherapistSchedule } from '../types';
 import { CapacityIgnoreConfig, CapacityResult, normalizeSpecialtyKey } from '../utils/capacity';
 import { normalizeTherapistName } from '../utils/conflictUtils';
@@ -22,6 +22,11 @@ interface CapacityModalProps {
   /** Salas da unidade no Mapa de sala (quando preenchido para o dia) */
   physicalRooms: { roomsManha: number; roomsTarde: number; usedManha: number; usedTarde: number } | null;
   onOpenRoomMap: () => void;
+  /** Visualização da grade: básica (por profissional) ou Mapa de sala (por sala) */
+  viewMode: 'basica' | 'mapa';
+  onChangeViewMode: (mode: 'basica' | 'mapa') => void;
+  /** Mapa de sala do dia já tem profissionais nas salas */
+  mapReady: boolean;
 }
 
 const pct = (n: number, total: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
@@ -52,8 +57,11 @@ export const CapacityModal: React.FC<CapacityModalProps> = ({
   daysWithData,
   physicalRooms,
   onOpenRoomMap,
+  viewMode,
+  onChangeViewMode,
+  mapReady,
 }) => {
-  const [tab, setTab] = useState<'profissionais' | 'ignorar'>('profissionais');
+  const [tab, setTab] = useState<'profissionais' | 'especialidade' | 'ignorar'>('profissionais');
   const [newSpecialty, setNewSpecialty] = useState('');
 
   const specialties = useMemo(() => {
@@ -71,6 +79,8 @@ export const CapacityModal: React.FC<CapacityModalProps> = ({
   if (!isOpen) return null;
 
   const gradeText = slotMinutes === 60 ? 'grade de 1 hora' : 'grade de 30 minutos';
+  const byRoom = result.byRoomMap;
+  const unitLabel = byRoom ? 'sala(s)' : 'profissional(is)';
   const ignoredCount =
     therapists.filter((t) => {
       const n = normalizeTherapistName(t.name);
@@ -147,7 +157,7 @@ export const CapacityModal: React.FC<CapacityModalProps> = ({
               <h2 className="text-base font-bold tracking-tight">Capacidade de atendimento</h2>
               <p className="text-xs text-brand-200">
                 {dayLabel}
-                {date ? ` · ${date}` : ''} · {result.professionalsCounted} profissional(is) no cálculo · {result.slotsPerProfessional}{' '}
+                {date ? ` · ${date}` : ''} · {result.professionalsCounted} {unitLabel} no cálculo · {result.slotsPerProfessional}{' '}
                 horário(s) cada
               </p>
             </div>
@@ -188,9 +198,38 @@ export const CapacityModal: React.FC<CapacityModalProps> = ({
             <div className="flex items-start gap-2.5">
               <Info className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
               <div>
-                <div className="text-sm font-bold">Você está na {gradeText}</div>
-                <div className="text-xs">Mudar a grade altera a visualização da sua capacidade.</div>
+                <div className="text-sm font-bold">
+                  Você está na {gradeText} · visualização {viewMode === 'mapa' ? 'Mapa de sala' : 'Básica'}
+                </div>
+                <div className="text-xs">Mudar a grade ou a visualização altera a visualização da sua capacidade.</div>
+                {viewMode === 'mapa' && !mapReady && (
+                  <div className="mt-1 text-xs font-semibold">
+                    O Mapa de sala deste dia ainda não tem profissionais nas salas: a capacidade abaixo segue a visualização básica.{' '}
+                    <button onClick={onOpenRoomMap} className="underline">
+                      Montar o Mapa de sala
+                    </button>
+                  </div>
+                )}
+                {byRoom && (
+                  <div className="mt-1 text-xs">
+                    Pelo Mapa de sala: cada sala conta com a profissional da manhã e a da tarde; sala sem profissional conta como livre.
+                  </div>
+                )}
               </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+            <div className="inline-flex rounded-lg border border-amber-300 bg-white p-0.5">
+              {(['basica', 'mapa'] as const).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => onChangeViewMode(v)}
+                  className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
+                    viewMode === v ? 'bg-brand-700 text-white' : 'text-brand-800 hover:bg-brand-50'
+                  }`}
+                >
+                  {v === 'mapa' ? 'Mapa de sala' : 'Básica'}
+                </button>
+              ))}
             </div>
             <div className="inline-flex rounded-lg border border-amber-300 bg-white p-0.5">
               {([30, 60] as const).map((v) => (
@@ -204,6 +243,7 @@ export const CapacityModal: React.FC<CapacityModalProps> = ({
                   {v === 60 ? 'Grade de 1h' : 'Grade 30 min'}
                 </button>
               ))}
+            </div>
             </div>
           </div>
 
@@ -230,7 +270,7 @@ export const CapacityModal: React.FC<CapacityModalProps> = ({
                 <div className="bg-brand-200" style={{ width: `${pct(result.free, result.total)}%` }} title="Livres" />
               </div>
               <div className="mt-1 text-[11px] text-gray-500">
-                {result.total} horários no total ({result.professionalsCounted} profissional(is) × {result.slotsPerProfessional} horário(s) de{' '}
+                {result.total} horários no total ({result.professionalsCounted} {unitLabel} × {result.slotsPerProfessional} horário(s) de{' '}
                 {slotMinutes === 60 ? '1h' : '30 min'}, das 07h às 18h{config.includeLunch ? '' : ', sem 12h–13h'}).
               </div>
             </div>
@@ -241,7 +281,7 @@ export const CapacityModal: React.FC<CapacityModalProps> = ({
             <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
                 <DoorOpen className="h-4 w-4 text-brand-600" />
-                Salas vazias (profissional sem nenhum paciente no turno)
+                {byRoom ? 'Salas vazias (sem profissional ou sem nenhum paciente no turno)' : 'Salas vazias (profissional sem nenhum paciente no turno)'}
               </div>
               <div className="mt-2 flex gap-6">
                 <div>
@@ -292,7 +332,8 @@ export const CapacityModal: React.FC<CapacityModalProps> = ({
             <div className="flex border-b border-gray-200 px-3 pt-2">
               {(
                 [
-                  ['profissionais', 'Por profissional'],
+                  ['profissionais', byRoom ? 'Por sala' : 'Por profissional'],
+                  ['especialidade', 'Por especialidade'],
                   ['ignorar', `Ignorar no cálculo (${ignoredCount})`],
                 ] as const
               ).map(([key, label]) => (
@@ -313,7 +354,7 @@ export const CapacityModal: React.FC<CapacityModalProps> = ({
                 <table className="w-full border-collapse text-left text-xs">
                   <thead>
                     <tr className="bg-[#1d4f91] text-white">
-                      <th className="border border-black px-2 py-1.5">PROFISSIONAL / ESPECIALIDADE</th>
+                      <th className="border border-black px-2 py-1.5">{byRoom ? 'SALA / PROFISSIONAL' : 'PROFISSIONAL / ESPECIALIDADE'}</th>
                       <th className="w-24 border border-black px-2 py-1.5 text-center">DUPLAS/GRUPOS</th>
                       <th className="w-24 border border-black px-2 py-1.5 text-center">INDIVIDUAIS</th>
                       <th className="w-20 border border-black px-2 py-1.5 text-center">LIVRES</th>
@@ -324,17 +365,35 @@ export const CapacityModal: React.FC<CapacityModalProps> = ({
                     {result.rows.length === 0 ? (
                       <tr>
                         <td colSpan={5} className="border border-black px-2 py-6 text-center text-gray-500">
-                          Nenhuma profissional no cálculo.
+                          {byRoom ? 'Nenhuma sala no cálculo.' : 'Nenhuma profissional no cálculo.'}
                         </td>
                       </tr>
                     ) : (
                       result.rows.map((r) => (
                         <tr key={r.id}>
                           <td className="border border-black px-2 py-1.5">
-                            <div className="font-bold text-gray-900">
-                              {r.name} <span className="font-semibold text-gray-400">· {r.roomName}</span>
-                            </div>
-                            <div className="text-[11px] font-semibold text-[#1d4f91]">{r.specialty}</div>
+                            {byRoom ? (
+                              <>
+                                <div className="font-extrabold text-[#1d4f91]">{r.roomName}</div>
+                                <div className={`font-bold ${r.name === 'Vazio' ? 'italic text-gray-400' : 'text-gray-900'}`}>
+                                  {r.name}
+                                  {r.specialty && <span className="font-semibold text-[#1d4f91]"> · {r.specialty}</span>}
+                                </div>
+                                {r.afternoonName && (
+                                  <div className="mt-0.5 inline-flex items-center gap-1 rounded bg-accent-50 px-1.5 py-0.5 text-[11px] font-bold text-accent-800 ring-1 ring-accent-200">
+                                    <ArrowRight className="h-3 w-3" />
+                                    Tarde: {r.afternoonName}
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                <div className="font-bold text-gray-900">
+                                  {r.name} <span className="font-semibold text-gray-400">· {r.roomName}</span>
+                                </div>
+                                <div className="text-[11px] font-semibold text-[#1d4f91]">{r.specialty}</div>
+                              </>
+                            )}
                           </td>
                           <td className="border border-black bg-amber-50 px-2 py-1.5 text-center font-bold">{r.shared}</td>
                           <td className="border border-black bg-emerald-50 px-2 py-1.5 text-center font-bold">{r.individual}</td>
@@ -348,12 +407,69 @@ export const CapacityModal: React.FC<CapacityModalProps> = ({
                   </tbody>
                 </table>
               </div>
+            ) : tab === 'especialidade' ? (
+              <div className="overflow-x-auto p-3">
+                <table className="w-full border-collapse text-left text-xs">
+                  <thead>
+                    <tr className="bg-[#1d4f91] text-white">
+                      <th className="border border-black px-2 py-1.5">ESPECIALIDADE</th>
+                      <th className="w-24 border border-black px-2 py-1.5 text-center">PROFISSIONAIS</th>
+                      <th className="w-24 border border-black px-2 py-1.5 text-center">DUPLAS/GRUPOS</th>
+                      <th className="w-24 border border-black px-2 py-1.5 text-center">INDIVIDUAIS</th>
+                      <th className="w-20 border border-black px-2 py-1.5 text-center">LIVRES</th>
+                      <th className="w-28 border border-black px-2 py-1.5 text-center">OCUPAÇÃO</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.bySpecialty.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="border border-black px-2 py-6 text-center text-gray-500">
+                          Nenhuma especialidade no cálculo.
+                        </td>
+                      </tr>
+                    ) : (
+                      result.bySpecialty.map((sp) => {
+                        const total = sp.shared + sp.individual + sp.free;
+                        return (
+                          <tr key={sp.specialty}>
+                            <td className="border border-black px-2 py-1.5 font-bold text-[#1d4f91]">{sp.specialty}</td>
+                            <td className="border border-black px-2 py-1.5 text-center font-bold">{sp.professionals || '—'}</td>
+                            <td className="border border-black bg-amber-50 px-2 py-1.5 text-center font-bold">{sp.shared}</td>
+                            <td className="border border-black bg-emerald-50 px-2 py-1.5 text-center font-bold">{sp.individual}</td>
+                            <td className="border border-black px-2 py-1.5 text-center font-bold">{sp.free}</td>
+                            <td className="border border-black px-2 py-1.5 text-center font-semibold text-gray-700">
+                              {pct(sp.shared + sp.individual, total)}%
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                  {result.bySpecialty.length > 0 && (
+                    <tfoot>
+                      <tr className="bg-[#dde9f7] font-extrabold text-[#1d4f91]">
+                        <td className="border border-black px-2 py-1.5">TOTAL</td>
+                        <td className="border border-black px-2 py-1.5 text-center">
+                          {result.bySpecialty.reduce((n, sp) => n + sp.professionals, 0)}
+                        </td>
+                        <td className="border border-black px-2 py-1.5 text-center">{result.shared}</td>
+                        <td className="border border-black px-2 py-1.5 text-center">{result.individual}</td>
+                        <td className="border border-black px-2 py-1.5 text-center">{result.free}</td>
+                        <td className="border border-black px-2 py-1.5 text-center">{pct(result.shared + result.individual, result.total)}%</td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+                <p className="mt-2 text-[11px] text-gray-500">
+                  Ocupação = horários com paciente (individual, dupla ou grupo) sobre o total de horários da especialidade.
+                </p>
+              </div>
             ) : (
               <div className="grid gap-4 p-4 md:grid-cols-2">
                 <div>
                   <h4 className="mb-2 text-xs font-bold uppercase text-gray-500">Profissionais</h4>
                   <p className="mb-2 text-[11px] text-gray-500">
-                    Marque para ignorar no cálculo. Agendas ocultas em "Organizar salas" já vêm marcadas.
+                    Marque para ignorar no cálculo. Agendas ocultas em "Revisar salas" já vêm marcadas.
                   </p>
                   <div className="max-h-64 space-y-1 overflow-y-auto pr-1">
                     {therapists.map((t) => {

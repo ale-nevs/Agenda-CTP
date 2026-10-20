@@ -1,6 +1,6 @@
 import { DayOfWeekKey, DAYS_OF_WEEK, ParsedReport, TherapistSchedule } from '../types';
 import { CapacityIgnoreConfig, DEFAULT_CAPACITY_IGNORE } from './capacity';
-import { RoomMaps } from './roomMap';
+import { RoomMaps, RoomTags } from './roomMap';
 import { triggerDownload } from './exportUtils';
 
 export const BACKUP_APP_ID = 'validacao-agendas';
@@ -21,6 +21,8 @@ export interface AgendaBackupData {
   slotMinutes: 30 | 60;
   capacityIgnore: CapacityIgnoreConfig;
   roomMaps: RoomMaps;
+  roomTags: RoomTags;
+  viewMode: 'basica' | 'mapa';
 }
 
 interface AgendaBackupFile {
@@ -121,6 +123,10 @@ export async function readAgendaBackup(file: File): Promise<{ data: AgendaBackup
         includeLunch: typeof capIn.includeLunch === 'boolean' ? capIn.includeLunch : DEFAULT_CAPACITY_IGNORE.includeLunch,
       },
       roomMaps: perDay(d.roomMaps, (x) => isObject(x) && isObject(x.manha) && isObject(x.tarde)),
+      roomTags: isObject(d.roomTags)
+        ? Object.fromEntries(Object.entries(d.roomTags).map(([k, v]) => [k, stringList(v)]).filter(([, v]) => v.length > 0))
+        : {},
+      viewMode: d.viewMode === 'mapa' ? 'mapa' : 'basica',
     },
   };
 }

@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { X, Map as MapIcon, Printer, Wand2, EyeOff, Eye, Link2, Undo2, GripVertical, RotateCcw } from 'lucide-react';
+import { X, Map as MapIcon, Printer, Wand2, EyeOff, Eye, Link2, Undo2, GripVertical, RotateCcw, Tag, Plus } from 'lucide-react';
 import { DayOfWeekKey, DAYS_OF_WEEK, ParsedReport, TherapistSchedule } from '../types';
 import { normalizeTherapistName } from '../utils/conflictUtils';
 import {
@@ -15,12 +15,14 @@ import {
   roomOf,
   RoomMapDay,
   RoomMaps,
+  RoomTags,
   roomsOf,
   setHidden,
   Shift,
   SHIFT_LABEL,
   SHIFTS,
   shiftsOf,
+  tagsOf,
   unassign,
 } from '../utils/roomMap';
 
@@ -34,6 +36,9 @@ interface RoomMapModalProps {
   onChangeRoomMap: (day: DayOfWeekKey, map: RoomMapDay) => void;
   initialDay: DayOfWeekKey;
   clinic: string;
+  /** Etiquetas das salas (ex.: "TO Ayres", "Cozinha"), iguais em todos os dias */
+  roomTags: RoomTags;
+  onChangeRoomTags: (room: number, tags: string[]) => void;
 }
 
 interface DragInfo {
@@ -53,11 +58,15 @@ export const RoomMapModal: React.FC<RoomMapModalProps> = ({
   onChangeRoomMap,
   initialDay,
   clinic,
+  roomTags,
+  onChangeRoomTags,
 }) => {
   const [view, setView] = useState<DayOfWeekKey | 'SEMANA'>(initialDay);
   const [selected, setSelected] = useState<DragInfo | null>(null);
   const [dropHint, setDropHint] = useState<string | null>(null);
   const dragRef = useRef<DragInfo | null>(null);
+  const [tagRoom, setTagRoom] = useState<number | null>(null);
+  const [tagDraft, setTagDraft] = useState('');
 
   const daysWithData = DAYS_OF_WEEK.filter((d) => weeklyReports[d.key]);
 
@@ -203,6 +212,74 @@ export const RoomMapModal: React.FC<RoomMapModalProps> = ({
     );
   };
 
+  // ----- etiquetas da sala -----
+  const addTag = (room: number) => {
+    const value = tagDraft.trim().replace(/\s+/g, ' ').slice(0, 30);
+    setTagDraft('');
+    setTagRoom(null);
+    const current = tagsOf(roomTags, room);
+    if (!value || current.some((t) => t.toLowerCase() === value.toLowerCase())) return;
+    onChangeRoomTags(room, [...current, value]);
+  };
+
+  const renderRoomLabel = (room: number) => {
+    const tags = tagsOf(roomTags, room);
+    return (
+      <div className="flex flex-col items-center gap-1">
+        <span>SALA {room}</span>
+        {tags.length > 0 && (
+          <div className="flex flex-wrap justify-center gap-0.5">
+            {tags.map((t) => (
+              <span
+                key={t}
+                className="inline-flex items-center gap-0.5 rounded bg-accent-600 px-1 py-0.5 text-[9px] font-bold leading-none text-white"
+              >
+                {t}
+                <button
+                  onClick={() => onChangeRoomTags(room, tags.filter((x) => x !== t))}
+                  className="opacity-80 hover:opacity-100"
+                  title={`Remover a etiqueta "${t}"`}
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        {tagRoom === room ? (
+          <input
+            autoFocus
+            value={tagDraft}
+            onChange={(e) => setTagDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') addTag(room);
+              if (e.key === 'Escape') {
+                setTagRoom(null);
+                setTagDraft('');
+              }
+            }}
+            onBlur={() => addTag(room)}
+            placeholder="Ex.: TO Ayres"
+            maxLength={30}
+            className="w-[86px] rounded border border-accent-400 bg-white px-1 py-0.5 text-[10px] font-semibold text-gray-900 focus:outline-hidden"
+          />
+        ) : (
+          <button
+            onClick={() => {
+              setTagRoom(room);
+              setTagDraft('');
+            }}
+            className="inline-flex items-center gap-0.5 rounded border border-dashed border-[#1d4f91]/40 px-1 py-0.5 text-[9px] font-semibold text-[#1d4f91]/80 hover:bg-white"
+            title='Adicionar etiqueta à sala (ex.: "TO Ayres", "Cozinha"). Vale para todos os dias.'
+          >
+            <Plus className="h-2.5 w-2.5" />
+            etiqueta
+          </button>
+        )}
+      </div>
+    );
+  };
+
   const dayButtons = (
     <div className="flex flex-wrap items-center gap-1.5">
       <span className="mr-1 text-[11px] font-bold uppercase text-gray-500">Dia:</span>
@@ -306,7 +383,7 @@ export const RoomMapModal: React.FC<RoomMapModalProps> = ({
               Esvaziar salas
             </button>
             <button
-              onClick={() => printRoomMap([{ dayKey: view, date: current.date, map, pros }], clinic)}
+              onClick={() => printRoomMap([{ dayKey: view, date: current.date, map, pros }], clinic, roomTags)}
               className="inline-flex items-center gap-1.5 rounded-lg border border-brand-300 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800 hover:bg-brand-100"
             >
               <Printer className="h-3.5 w-3.5" />
@@ -314,6 +391,12 @@ export const RoomMapModal: React.FC<RoomMapModalProps> = ({
             </button>
           </div>
         </div>
+
+        <p className="flex items-center gap-1.5 text-[11px] text-gray-500">
+          <Tag className="h-3.5 w-3.5 text-accent-600" />
+          Use “+ etiqueta” na sala para marcar o uso dela (ex.: TO Ayres, Cozinha). As etiquetas valem para todos os dias e aparecem na
+          grade na visualização “Mapa de sala”.
+        </p>
 
         {selected && (
           <div className="rounded-lg border border-brand-300 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-900">
@@ -334,7 +417,7 @@ export const RoomMapModal: React.FC<RoomMapModalProps> = ({
               <table className="w-full border-collapse text-xs">
                 <thead>
                   <tr className="bg-[#1d4f91] text-white">
-                    <th className="w-20 border border-black px-2 py-2">SALA</th>
+                    <th className="w-24 border border-black px-2 py-2">SALA</th>
                     {SHIFTS.map((s) => (
                       <th key={s} className="border border-black px-2 py-2">
                         {SHIFT_LABEL[s].toUpperCase()}
@@ -345,7 +428,7 @@ export const RoomMapModal: React.FC<RoomMapModalProps> = ({
                 <tbody>
                   {Array.from({ length: maxRooms }, (_, i) => i + 1).map((room) => (
                     <tr key={room}>
-                      <td className="border border-black bg-[#dde9f7] px-2 py-2 text-center font-extrabold text-[#1d4f91]">SALA {room}</td>
+                      <td className="w-24 border border-black bg-[#dde9f7] px-1.5 py-2 text-center font-extrabold text-[#1d4f91]">{renderRoomLabel(room)}</td>
                       {SHIFTS.map((s) => {
                         const exists = room <= roomsOf(map, s);
                         const occ = exists ? occupantOf(map, s, room) : undefined;
@@ -486,7 +569,8 @@ export const RoomMapModal: React.FC<RoomMapModalProps> = ({
             onClick={() =>
               printRoomMap(
                 days.map(({ d, data }) => ({ dayKey: d.key, date: data.date, map: data.map, pros: data.pros })),
-                clinic
+                clinic,
+                roomTags
               )
             }
             disabled={days.length === 0}
@@ -520,7 +604,14 @@ export const RoomMapModal: React.FC<RoomMapModalProps> = ({
             <tbody>
               {Array.from({ length: maxRooms }, (_, i) => i + 1).map((room) => (
                 <tr key={room}>
-                  <td className="border border-black bg-[#dde9f7] px-2 py-1 text-center font-extrabold text-[#1d4f91]">{room}</td>
+                  <td className="border border-black bg-[#dde9f7] px-1 py-1 text-center font-extrabold text-[#1d4f91]">
+                    {room}
+                    {tagsOf(roomTags, room).map((t) => (
+                      <span key={t} className="mt-0.5 block rounded bg-accent-600 px-0.5 text-[8px] font-bold leading-tight text-white">
+                        {t}
+                      </span>
+                    ))}
+                  </td>
                   {days.map(({ d, data }) => (
                     <React.Fragment key={d.key}>
                       {cell(data, 'manha', room)}
