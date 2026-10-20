@@ -162,6 +162,58 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     return () => el.removeEventListener('wheel', onWheel);
   }, [setZoom, columns.length]);
 
+  // Topo congelado: ao rolar até a tarde, mostra as profissionais da tarde (no Mapa de sala podem mudar)
+  const salaRowRef = useRef<HTMLTableRowElement>(null);
+  const pmHeaderRef = useRef<HTMLTableRowElement>(null);
+  const [stickyShift, setStickyShift] = useState<'am' | 'pm'>('am');
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () => {
+      const sala = salaRowRef.current;
+      const pm = pmHeaderRef.current;
+      if (!sala || !pm) return;
+      // Compara com a linha SALA (altura fixa) para não alternar quando a altura dos nomes muda
+      const next = pm.getBoundingClientRect().top <= sala.getBoundingClientRect().bottom ? 'pm' : 'am';
+      setStickyShift((prev) => (prev === next ? prev : next));
+    };
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => {
+      el.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, [columns.length, zoom, hasReport]);
+
+  // Mapa de sala: espaço extra no fim da grade para a tarde conseguir chegar ao topo congelado
+  const tableRef = useRef<HTMLTableElement>(null);
+  const [bottomSpacer, setBottomSpacer] = useState(0);
+  useEffect(() => {
+    const el = scrollRef.current;
+    const table = tableRef.current;
+    if (!isMapView || !el || !table) {
+      setBottomSpacer(0);
+      return;
+    }
+    const measure = () => {
+      const sala = salaRowRef.current;
+      const pm = pmHeaderRef.current;
+      if (!sala || !pm) return;
+      const top = el.getBoundingClientRect().top;
+      const pmOffset = pm.getBoundingClientRect().top - top + el.scrollTop;
+      const salaBottom = sala.getBoundingClientRect().bottom - top;
+      const maxScroll = Math.max(0, table.getBoundingClientRect().height - el.clientHeight);
+      const next = Math.max(0, Math.ceil(pmOffset - salaBottom - maxScroll) + 4);
+      setBottomSpacer((prev) => (Math.abs(prev - next) < 2 ? prev : next));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(table);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [isMapView, columns.length, zoom, hasReport]);
+
   const startEditCell = (therapistId: string, time: string) => {
     setEditingCell({ therapistId, time });
     setEditValue(getCellContent(therapistId, time) || '');
@@ -302,9 +354,10 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     editable: boolean,
     keyPrefix: string,
     sticky: string,
-    shift: 'am' | 'pm' = 'am'
+    shift: 'am' | 'pm' = 'am',
+    rowRef?: React.Ref<HTMLTableRowElement>
   ) => (
-    <tr className={rowClass}>
+    <tr className={rowClass} ref={rowRef}>
       <th className={`${sticky} ${rowClass} py-1.5 px-0.5 text-center text-[9px] font-bold tracking-tight`}>{label}</th>
       {columns.map((col) => {
         // Mapa de sala: nome da sala com as etiquetas
@@ -638,13 +691,23 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
       {/* Scrollable grid container */}
       <div ref={scrollRef} className="max-h-[75vh] overflow-auto">
         <table
+          ref={tableRef}
           className="border-collapse text-[11px] text-center select-text"
           style={{ zoom, width: naturalTableWidth, tableLayout: 'fixed' }}
         >
           <thead className="sticky top-0 z-20">
-            {headerRow('roomName', 'SALA', 'bg-[#1d4f91] text-white tracking-wider', !isMapView, 'sala', stickyHeadCell)}
-            {headerRow('name', 'TERAPEUTA', 'bg-[#8fb3e0] text-[#0f2747]', true, 'name', stickyHeadCell)}
-            {headerRow('specialty', 'HORÁRIO', 'bg-[#dde9f7] text-[#1d4f91]', true, 'spec', stickyHeadCell)}
+            {headerRow(
+              'roomName',
+              stickyShift === 'pm' ? 'SALA · TARDE' : 'SALA',
+              'bg-[#1d4f91] text-white tracking-wider',
+              !isMapView,
+              'sala',
+              stickyHeadCell,
+              'am',
+              salaRowRef
+            )}
+            {headerRow('name', 'TERAPEUTA', 'bg-[#8fb3e0] text-[#0f2747]', true, 'name', stickyHeadCell, stickyShift)}
+            {headerRow('specialty', 'HORÁRIO', 'bg-[#dde9f7] text-[#1d4f91]', true, 'spec', stickyHeadCell, stickyShift)}
           </thead>
 
           <tbody>
@@ -660,13 +723,14 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
             )}
 
             {/* Cabeçalhos repetidos para o turno da tarde */}
-            {headerRow('name', 'TERAPEUTA', 'bg-[#8fb3e0] text-[#0f2747]', false, 'pm-name', stickyTimeCell, 'pm')}
+            {headerRow('name', 'TERAPEUTA', 'bg-[#8fb3e0] text-[#0f2747]', false, 'pm-name', stickyTimeCell, 'pm', pmHeaderRef)}
             {headerRow('specialty', 'HORÁRIO', 'bg-[#dde9f7] text-[#1d4f91]', false, 'pm-spec', stickyTimeCell, 'pm')}
 
             {timeRows(afternoonTimes, 'afternoon')}
             {addTimeRow('afternoon', 'Hora', 'Inserir horário personalizado de tarde', 'Pressione Enter para adicionar horário de tarde')}
           </tbody>
         </table>
+        {bottomSpacer > 0 && <div aria-hidden style={{ height: bottomSpacer }} />}
       </div>
 
       {/* Legenda clínica */}
