@@ -504,7 +504,14 @@ export async function exportStandaloneHtml(data: ExportTableData) {
  */
 export async function exportPdf(data: ExportTableData) {
   const html = await buildDocumentHtml(data, { withToolbar: false });
+  await printHtmlDocument(html, safeFileName(data));
+}
 
+/**
+ * Imprime um documento HTML completo por um iframe oculto (janela de impressão do navegador:
+ * "Salvar como PDF" ou impressora). Espera imagens e fontes; o título vira o nome sugerido do PDF.
+ */
+export async function printHtmlDocument(html: string, title: string) {
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
   iframe.style.position = 'fixed';
@@ -545,7 +552,7 @@ export async function exportPdf(data: ExportTableData) {
 
   // O nome sugerido do PDF vem do <title> do documento impresso
   const previousTitle = document.title;
-  document.title = safeFileName(data);
+  document.title = title;
   win.addEventListener('afterprint', cleanup);
   win.focus();
   win.print();
