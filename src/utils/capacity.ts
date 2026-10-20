@@ -10,7 +10,7 @@ export interface CapacityIgnoreConfig {
   specialties: string[];
   /** Agendas ocultas (normalizadas) que o usuário decidiu CONTAR mesmo assim */
   keptHidden: string[];
-  /** Conta os horários de 12h às 13h */
+  /** Conta os horários de 12h às 13h (desligado por padrão: o almoço não entra como livre) */
   includeLunch: boolean;
 }
 
@@ -18,7 +18,7 @@ export const DEFAULT_CAPACITY_IGNORE: CapacityIgnoreConfig = {
   professionals: [],
   specialties: [],
   keptHidden: [],
-  includeLunch: true,
+  includeLunch: false,
 };
 
 export const normalizeSpecialtyKey = (s: string) => normalizePatientName(s || '');

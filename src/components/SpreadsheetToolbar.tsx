@@ -13,6 +13,8 @@ import {
   Zap,
   Gauge,
   Map as MapIcon,
+  EyeOff,
+  Eye,
 } from 'lucide-react';
 import { DayOfWeekKey, DAYS_OF_WEEK } from '../types';
 
@@ -46,6 +48,10 @@ interface SpreadsheetToolbarProps {
   conflictsCount: number;
   onOpenCapacity: () => void;
   onOpenRoomMap: () => void;
+  /** Agendas de "atendimento terapêutico" e "especialidade" do dia: total e quantas estão visíveis */
+  quickHideTotal: number;
+  quickHideVisible: number;
+  onQuickHide: () => void;
 }
 
 export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
@@ -76,6 +82,9 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
   conflictsCount,
   onOpenCapacity,
   onOpenRoomMap,
+  quickHideTotal,
+  quickHideVisible,
+  onQuickHide,
 }) => {
   const exportDisabled = !hasDayData || activeTherapistsCount === 0 || exporting !== null;
   const exportBtn =
@@ -192,6 +201,27 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
           >
             <SlidersHorizontal className="h-3.5 w-3.5 text-brand-700" />
             Organizar salas ({activeTherapistsCount}/{totalTherapists})
+          </button>
+
+          <button
+            onClick={onQuickHide}
+            disabled={!hasDayData || quickHideTotal === 0}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-white px-3 py-2 text-xs font-semibold text-brand-800 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-40"
+            title={
+              quickHideTotal === 0
+                ? 'Nenhuma agenda de "Atendimento terapêutico" ou "Especialidade" neste dia'
+                : quickHideVisible > 0
+                ? 'Ocultar (desmarcar visível) as agendas de "Atendimento terapêutico" e "Especialidade" deste dia'
+                : 'Voltar a mostrar as agendas de "Atendimento terapêutico" e "Especialidade" deste dia'
+            }
+          >
+            {quickHideVisible > 0 || quickHideTotal === 0 ? (
+              <EyeOff className="h-3.5 w-3.5 text-brand-700" />
+            ) : (
+              <Eye className="h-3.5 w-3.5 text-brand-700" />
+            )}
+            {quickHideVisible > 0 || quickHideTotal === 0 ? 'Ocultar' : 'Mostrar'} atend. terapêutico/especialidade
+            {quickHideTotal > 0 && ` (${quickHideVisible > 0 ? quickHideVisible : quickHideTotal})`}
           </button>
 
           {hasAnyData && (

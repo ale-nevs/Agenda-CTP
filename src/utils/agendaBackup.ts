@@ -118,7 +118,7 @@ export async function readAgendaBackup(file: File): Promise<{ data: AgendaBackup
         professionals: stringList(capIn.professionals),
         specialties: stringList(capIn.specialties),
         keptHidden: stringList(capIn.keptHidden),
-        includeLunch: capIn.includeLunch !== undefined ? capIn.includeLunch !== false : DEFAULT_CAPACITY_IGNORE.includeLunch,
+        includeLunch: typeof capIn.includeLunch === 'boolean' ? capIn.includeLunch : DEFAULT_CAPACITY_IGNORE.includeLunch,
       },
       roomMaps: perDay(d.roomMaps, (x) => isObject(x) && isObject(x.manha) && isObject(x.tarde)),
     },

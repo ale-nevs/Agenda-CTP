@@ -209,6 +209,33 @@ export default function App() {
     return activeTherapists.map((t) => t.id);
   }, [activeTherapists]);
 
+  // Ocultar rápido: agendas de "Atendimento terapêutico" e "Especialidade" (sem especialidade definida)
+  const quickHideIds = useMemo(() => {
+    return mergedTherapists
+      .filter((t) => {
+        const spec = normalizePatientName(t.specialty);
+        return spec === 'ESPECIALIDADE' || spec.startsWith('ATENDIMENTO TERAPEUTICO');
+      })
+      .map((t) => t.id);
+  }, [mergedTherapists]);
+  const quickHideVisible = useMemo(
+    () => quickHideIds.filter((id) => visibleTherapistIds.includes(id)).length,
+    [quickHideIds, visibleTherapistIds]
+  );
+
+  // Oculta as que estão visíveis; se todas já estão ocultas, volta a mostrar
+  const handleQuickHide = () => {
+    if (quickHideIds.length === 0) return;
+    setDayHiddenRooms((prev) => {
+      const currentHidden = prev[activeDay] || [];
+      const updated =
+        quickHideVisible > 0
+          ? Array.from(new Set([...currentHidden, ...quickHideIds]))
+          : currentHidden.filter((id) => !quickHideIds.includes(id));
+      return { ...prev, [activeDay]: updated };
+    });
+  };
+
   // Reorder therapists for the active day
   const handleReorderTherapists = (dragIndex: number, hoverIndex: number) => {
     const currentList = mergedTherapists.map((t) => t.id);
@@ -514,10 +541,11 @@ export default function App() {
     try {
       const { data, exportedAt } = await readAgendaBackup(file);
       const when = exportedAt ? new Date(exportedAt).toLocaleString('pt-BR') : '';
+      const days = DAYS_OF_WEEK.filter((d) => data.weeklyReports[d.key]).map((d) => d.label);
       if (
-        hasAnyData &&
         !window.confirm(
-          `Importar a agenda${when ? ` exportada em ${when}` : ''}?\n\nA agenda atual, com as edições e configurações, será substituída.`
+          `Importar a agenda${when ? ` exportada em ${when}` : ''}?\n\nDias no arquivo: ${days.join(', ')}.` +
+            (hasAnyData ? '\n\nA agenda atual de todos os dias, com as edições e configurações, será substituída.' : '')
         )
       ) {
         return;
@@ -623,6 +651,9 @@ export default function App() {
             conflictsCount={dayConflictsList.length}
             onOpenCapacity={() => setIsCapacityOpen(true)}
             onOpenRoomMap={() => setIsRoomMapOpen(true)}
+            quickHideTotal={quickHideIds.length}
+            quickHideVisible={quickHideVisible}
+            onQuickHide={handleQuickHide}
           />
         </div>
 
@@ -724,7 +755,7 @@ export default function App() {
           <div className="text-xs text-slate-600">
             <strong className="text-brand-800">Agenda completa em JSON</strong>
             <span className="ml-1.5">
-              arquivos lidos, edições, salas, grade, capacidade e mapa de sala: salve para continuar depois ou em outro computador.
+              todos os dias da semana de uma vez (segunda a sábado), com edições, salas, grade, capacidade e mapa de sala: salve para continuar depois ou em outro computador.
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -732,7 +763,7 @@ export default function App() {
               onClick={handleExportAgenda}
               disabled={!hasAnyData}
               className="inline-flex items-center gap-1.5 rounded-lg bg-brand-700 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-40"
-              title="Baixar um arquivo JSON com todas as agendas, mudanças e configurações"
+              title="Baixar um único arquivo JSON com as agendas de todos os dias da semana, mudanças e configurações"
             >
               <FileDown className="h-3.5 w-3.5" />
               Exportar agenda
@@ -740,7 +771,7 @@ export default function App() {
             <button
               onClick={() => importInputRef.current?.click()}
               className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-800 hover:bg-brand-100"
-              title="Abrir um arquivo JSON gerado por Exportar agenda"
+              title="Abrir um arquivo JSON gerado por Exportar agenda: carrega todos os dias da semana do arquivo"
             >
               <FileUp className="h-3.5 w-3.5" />
               Importar agenda
