@@ -108,7 +108,9 @@ export function findScheduleConflictsForDay(
   therapists: TherapistSchedule[],
   allTimeSlots: string[],
   getCellContent?: (therapistId: string, time: string) => string,
-  slotMinutes = 30
+  slotMinutes = 30,
+  /** Sala da profissional no horário (visualização Mapa de sala: muda entre manhã e tarde) */
+  roomNameAt?: (therapistId: string, slotTime: string) => string
 ): Map<string, DayConflict> {
   const conflictsMap = new Map<string, DayConflict>();
   if (!therapists || therapists.length === 0) return conflictsMap;
@@ -139,7 +141,7 @@ export function findScheduleConflictsForDay(
           therapistId: therapist.id,
           therapistName: therapist.name,
           normalizedTherapist: normTherapist,
-          roomName: therapist.roomName,
+          roomName: roomNameAt ? roomNameAt(therapist.id, slotTime) : therapist.roomName,
           specialty: a.specialty || therapist.specialty,
           exactTime: a.time,
           slotTime,
@@ -176,7 +178,7 @@ export function findScheduleConflictsForDay(
                 therapistId: therapist.id,
                 therapistName: therapist.name,
                 normalizedTherapist: normTherapist,
-                roomName: therapist.roomName,
+                roomName: roomNameAt ? roomNameAt(therapist.id, bookingSlot) : therapist.roomName,
                 specialty: therapist.specialty,
                 exactTime,
                 slotTime: bookingSlot,

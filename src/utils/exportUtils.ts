@@ -22,7 +22,47 @@ export interface ExportTableData {
   showLunchPlaceholder?: boolean;
   /** 30 = grade padrão de 30 min; 60 = Grade de 1h */
   slotMinutes?: number;
+  /**
+   * Visualização Mapa de sala: uma coluna por sala, com a profissional da manhã e a da tarde.
+   * Nesse caso `activeTherapists` são as profissionais consideradas nos choques.
+   */
+  roomColumns?: ExportRoomColumn[] | null;
+  /** Sala da profissional no horário (Mapa de sala), usada nos choques */
+  roomNameAt?: (therapistId: string, time: string) => string;
 }
+
+export interface ExportRoomColumn {
+  roomName: string;
+  tags: string[];
+  morning: TherapistSchedule | null;
+  afternoon: TherapistSchedule | null;
+  changed: boolean;
+}
+
+/** Coluna de um turno: sala e a profissional do turno (null = sala vazia no Mapa de sala). */
+interface ShiftColumn {
+  key: string;
+  roomName: string;
+  tags: string[];
+  therapist: TherapistSchedule | null;
+  /** Mudança de profissional em relação à manhã */
+  changed: boolean;
+}
+
+function shiftColumns(data: ExportTableData, shift: 'MANHA' | 'TARDE'): ShiftColumn[] {
+  if (data.roomColumns) {
+    return data.roomColumns.map((c, i) => ({
+      key: `sala-${i}`,
+      roomName: c.roomName,
+      tags: c.tags,
+      therapist: shift === 'MANHA' ? c.morning : c.afternoon,
+      changed: shift === 'TARDE' && c.changed,
+    }));
+  }
+  return data.activeTherapists.map((t) => ({ key: t.id, roomName: t.roomName, tags: [], therapist: t, changed: false }));
+}
+
+const columnCount = (data: ExportTableData) => (data.roomColumns ? data.roomColumns.length : data.activeTherapists.length);
 
 /**
  * Máximo de salas por página no PDF; acima disso o turno é dividido em mais páginas.
@@ -83,7 +123,7 @@ function buildScheduleModel(data: ExportTableData): ScheduleModel {
     slotMinutes = 30,
   } = data;
   const allTimes = [...morningTimes, ...middayTimes, ...afternoonTimes];
-  const conflictsMap = findScheduleConflictsForDay(activeTherapists, allTimes, getCellContent, slotMinutes);
+  const conflictsMap = findScheduleConflictsForDay(activeTherapists, allTimes, getCellContent, slotMinutes, data.roomNameAt);
 
   const cell = (therapist: TherapistSchedule, time: string, isMidday: boolean): CellModel => {
     const raw = getCellContent(therapist.id, time) || '';
@@ -166,14 +206,32 @@ function chunkRooms<T>(items: T[], max: number): T[][] {
   return chunks;
 }
 
-/** Profissionais sem nenhum paciente nos horários (não-almoço) do turno: viram "SALA VAZIA" mesclada. */
-function emptyShiftRoomIds(model: ScheduleModel, shift: ShiftModel, rooms: TherapistSchedule[]): Set<string> {
+/**
+ * Colunas sem nenhum paciente nos horários (não-almoço) do turno: viram "SALA VAZIA" mesclada.
+ * Sala sem profissional (Mapa de sala) vira "VAZIO" mesclado.
+ */
+function emptyShiftRoomIds(model: ScheduleModel, shift: ShiftModel, rooms: ShiftColumn[]): Set<string> {
   const times = shift.times.filter((t) => !t.isMidday).map((t) => t.time);
-  if (times.length < 2) return new Set();
   return new Set(
-    rooms.filter((r) => times.every((time) => !model.data.getCellContent(r.id, time))).map((r) => r.id)
+    rooms
+      .filter((r) =>
+        !r.therapist ? times.length > 0 : times.length >= 2 && times.every((time) => !model.data.getCellContent(r.therapist!.id, time))
+      )
+      .map((r) => r.key)
   );
 }
+
+const EMPTY_CELL: CellModel = {
+  raw: '',
+  isEmpty: true,
+  isLunch: false,
+  isDupla: false,
+  isGrupo: false,
+  count: 0,
+  hasClinicalAlert: false,
+  hasConflict: false,
+  patients: [],
+};
 
 function escapeHtml(value: string): string {
   return (value || '')
@@ -294,6 +352,11 @@ const DOCUMENT_CSS = `
   thead th { text-align: center; font-weight: 800; }
   tr.h-sala th { background: ${BRAND.headerSala}; color: #fff; letter-spacing: .3px; }
   tr.h-terapeuta th { background: ${BRAND.headerTerapeuta}; color: ${BRAND.headerText}; }
+  tr.h-sala .tags { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; margin-top: 1px; }
+  tr.h-sala .tags span { background: ${BRAND.accent}; color: #fff; border-radius: 3px; padding: 0 3px; font-size: .78em; letter-spacing: 0; }
+  tr.h-terapeuta th.vago { font-style: italic; font-weight: 600; opacity: .75; }
+  tr.h-terapeuta th.mudou { background: ${BRAND.accent}; color: #fff; }
+  .mudou-tag { display: inline-block; margin-top: 1px; background: #fff; color: ${BRAND.accent}; border-radius: 3px; padding: 0 3px; font-size: .72em; font-weight: 800; text-transform: uppercase; letter-spacing: .2px; }
   tr.h-especialidade th { background: ${BRAND.headerEspecialidade}; color: ${BRAND.headerSala}; }
   th.corner { font-size: .72em; letter-spacing: -.2px; padding: 2px 1px; }
   tbody td.time { text-align: center; font-weight: 800; background: ${BRAND.primarySoft}; color: ${BRAND.primaryDarker}; }
@@ -341,13 +404,13 @@ const DOCUMENT_CSS = `
 
 function buildPagesHtml(model: ScheduleModel, logoDataUrl: string | null): { html: string; pageCount: number } {
   const { data, shifts, cell } = model;
-  const roomChunks = chunkRooms(data.activeTherapists, MAX_ROOMS_PER_PAGE);
   const emittedAt = new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
 
   const pages: string[] = [];
   shifts.forEach((shift) => {
     const shiftTimes = new Set(shift.times.map((t) => t.time));
     const shiftConflicts = model.conflicts.filter((c) => shiftTimes.has(c.slotTime));
+    const roomChunks = chunkRooms(shiftColumns(data, shift.key), MAX_ROOMS_PER_PAGE);
 
     roomChunks.forEach((rooms, chunkIdx) => {
       const n = rooms.length;
@@ -359,12 +422,25 @@ function buildPagesHtml(model: ScheduleModel, logoDataUrl: string | null): { htm
 
       const header = `
         <thead>
-          <tr class="h-sala"><th class="corner">SALA</th>${rooms.map((t) => `<th>${escapeHtml(t.roomName)}</th>`).join('')}</tr>
+          <tr class="h-sala"><th class="corner">SALA</th>${rooms
+            .map(
+              (r) =>
+                `<th>${escapeHtml(r.roomName)}${
+                  r.tags.length ? `<div class="tags">${r.tags.map((t) => `<span>${escapeHtml(t)}</span>`).join('')}</div>` : ''
+                }</th>`
+            )
+            .join('')}</tr>
           <tr class="h-terapeuta"><th class="corner">TERAPEUTA</th>${rooms
-            .map((t) => `<th>${escapeHtml(t.name)}</th>`)
+            .map((r) =>
+              !r.therapist
+                ? '<th class="vago">Vazio</th>'
+                : r.changed
+                ? `<th class="mudou">${escapeHtml(r.therapist.name)}<div class="mudou-tag">Mudança de profissional</div></th>`
+                : `<th>${escapeHtml(r.therapist.name)}</th>`
+            )
             .join('')}</tr>
           <tr class="h-especialidade"><th class="corner">HORÁRIO</th>${rooms
-            .map((t) => `<th>${escapeHtml(t.specialty || 'ESPECIALIDADE')}</th>`)
+            .map((r) => `<th>${r.therapist ? escapeHtml(r.therapist.specialty || 'ESPECIALIDADE') : '—'}</th>`)
             .join('')}</tr>
         </thead>`;
 
@@ -373,11 +449,13 @@ function buildPagesHtml(model: ScheduleModel, logoDataUrl: string | null): { htm
       const body = shift.times
         .map(({ time, isMidday }, rowIdx) => {
           const cells = rooms
-            .map((t) => {
-              if (!isMidday && emptyIds.has(t.id)) {
-                return rowIdx === 0 ? `<td class="c-vazia" rowspan="${mergeCount}">SALA VAZIA</td>` : '';
+            .map((col) => {
+              if (!isMidday && emptyIds.has(col.key)) {
+                return rowIdx === 0
+                  ? `<td class="c-vazia" rowspan="${mergeCount}">${col.therapist ? 'SALA VAZIA' : 'VAZIO'}</td>`
+                  : '';
               }
-              const r = renderCellHtml(cell(t, time, isMidday));
+              const r = renderCellHtml(col.therapist ? cell(col.therapist, time, isMidday) : EMPTY_CELL);
               return `<td class="${r.cls}">${r.html}</td>`;
             })
             .join('');
@@ -589,8 +667,8 @@ function cellText(c: CellModel): string {
 export async function exportExcel(data: ExportTableData) {
   const ExcelJS = (await import('exceljs')).default;
   const model = buildScheduleModel(data);
-  const { activeTherapists: rooms } = data;
-  const nCols = rooms.length + 1;
+  const nRooms = columnCount(data);
+  const nCols = nRooms + 1;
 
   const wb = new ExcelJS.Workbook();
   wb.creator = APP_FULL_NAME;
@@ -612,7 +690,7 @@ export async function exportExcel(data: ExportTableData) {
     },
   });
 
-  ws.columns = [{ width: 9 }, ...rooms.map(() => ({ width: 34 }))];
+  ws.columns = [{ width: 9 }, ...Array.from({ length: nRooms }, () => ({ width: 34 }))];
 
   const font = 'Arial';
   const thin = { style: 'thin' as const, color: { argb: argb(BRAND.gridLine) } };
@@ -631,7 +709,7 @@ export async function exportExcel(data: ExportTableData) {
   t1.font = { name: font, size: 15, bold: true, color: { argb: argb(BRAND.primary) } };
   t1.alignment = { vertical: 'middle' };
   const t2 = ws.getCell(2, titleCol);
-  t2.value = `${data.dayOfWeek} · ${data.date} · ${gradeLabel(data)} · ${rooms.length} sala(s) · ${model.totalAppointments} atendimentos · ${model.conflicts.length} choque(s)`;
+  t2.value = `${data.dayOfWeek} · ${data.date} · ${gradeLabel(data)} · ${nRooms} sala(s) · ${model.totalAppointments} atendimentos · ${model.conflicts.length} choque(s)`;
   t2.font = { name: font, size: 10, bold: true, color: { argb: argb(BRAND.text) } };
   t2.alignment = { vertical: 'middle' };
   if (logo) {
@@ -666,19 +744,41 @@ export async function exportExcel(data: ExportTableData) {
     rowIdx++;
   };
 
-  const roomNames = rooms.map((t) => t.roomName);
-  const therapistNames = rooms.map((t) => t.name);
-  const specialties = rooms.map((t) => t.specialty || 'ESPECIALIDADE');
-
   const firstHeaderRow = rowIdx;
   model.shifts.forEach((shift, shiftIdx) => {
     if (shiftIdx > 0) {
       ws.getRow(rowIdx - 1).addPageBreak();
     }
+    const rooms = shiftColumns(data, shift.key);
     addShiftTitle(`${shift.label.toUpperCase()} · ${shift.rangeLabel}`);
-    addHeaderRow('SALA', roomNames, BRAND.headerSala, '#FFFFFF');
-    addHeaderRow('TERAPEUTA', therapistNames, BRAND.headerTerapeuta, BRAND.headerText, 9);
-    addHeaderRow('HORÁRIO', specialties, BRAND.headerEspecialidade, BRAND.headerSala, 9);
+    const salaRow = addHeaderRow(
+      'SALA',
+      rooms.map((r) => (r.tags.length ? `${r.roomName}\n${r.tags.join(' · ')}` : r.roomName)),
+      BRAND.headerSala,
+      '#FFFFFF'
+    );
+    if (rooms.some((r) => r.tags.length)) salaRow.height = 34;
+    const nameRow = addHeaderRow(
+      'TERAPEUTA',
+      rooms.map((r) => (!r.therapist ? 'Vazio' : r.changed ? `${r.therapist.name}\n(MUDANÇA DE PROFISSIONAL)` : r.therapist.name)),
+      BRAND.headerTerapeuta,
+      BRAND.headerText,
+      9
+    );
+    rooms.forEach((r, i) => {
+      if (!r.changed) return;
+      const cell = nameRow.getCell(i + 2);
+      cell.fill = fill(BRAND.accent);
+      cell.font = { name: font, size: 9, bold: true, color: { argb: 'FFFFFFFF' } };
+    });
+    if (rooms.some((r) => r.changed)) nameRow.height = 34;
+    addHeaderRow(
+      'HORÁRIO',
+      rooms.map((r) => (r.therapist ? r.therapist.specialty || 'ESPECIALIDADE' : '—')),
+      BRAND.headerEspecialidade,
+      BRAND.headerSala,
+      9
+    );
 
     const shiftStartRow = rowIdx;
     const emptyIds = emptyShiftRoomIds(model, shift, rooms);
@@ -692,8 +792,8 @@ export async function exportExcel(data: ExportTableData) {
       timeCell.border = border;
 
       let maxLines = 1;
-      rooms.forEach((t, i) => {
-        const c = model.cell(t, time, isMidday);
+      rooms.forEach((r, i) => {
+        const c = r.therapist ? model.cell(r.therapist, time, isMidday) : EMPTY_CELL;
         const cell = row.getCell(i + 2);
         const text = cellText(c);
         cell.value = text;
@@ -741,12 +841,12 @@ export async function exportExcel(data: ExportTableData) {
 
     // "SALA VAZIA" mesclada nos turnos sem nenhum paciente
     const mergeCount = shift.times.filter((t) => !t.isMidday).length;
-    rooms.forEach((t, i) => {
-      if (!emptyIds.has(t.id)) return;
+    rooms.forEach((r, i) => {
+      if (!emptyIds.has(r.key) || mergeCount < 1) return;
       const col = i + 2;
-      ws.mergeCells(shiftStartRow, col, shiftStartRow + mergeCount - 1, col);
+      if (mergeCount > 1) ws.mergeCells(shiftStartRow, col, shiftStartRow + mergeCount - 1, col);
       const merged = ws.getCell(shiftStartRow, col);
-      merged.value = 'SALA VAZIA';
+      merged.value = r.therapist ? 'SALA VAZIA' : 'VAZIO';
       merged.fill = fill('#F8FAFC');
       merged.font = { name: font, size: 11, bold: true, color: { argb: argb('#9CA3AF') } };
       merged.alignment = { horizontal: 'center', vertical: 'middle' };
