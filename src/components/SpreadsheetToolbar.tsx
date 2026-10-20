@@ -50,6 +50,9 @@ interface SpreadsheetToolbarProps {
   onOpenRoomMap: () => void;
   /** Agendas de "atendimento terapêutico" e "especialidade" do dia: total e quantas estão visíveis */
   quickHideTotal: number;
+  /** Visualização da grade: básica (uma coluna por profissional) ou Mapa de sala (uma coluna por sala) */
+  viewMode: 'basica' | 'mapa';
+  onChangeViewMode: (mode: 'basica' | 'mapa') => void;
   quickHideVisible: number;
   onQuickHide: () => void;
 }
@@ -83,6 +86,8 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
   onOpenCapacity,
   onOpenRoomMap,
   quickHideTotal,
+  viewMode,
+  onChangeViewMode,
   quickHideVisible,
   onQuickHide,
 }) => {
@@ -131,7 +136,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
           title="Todas as duplas e grupos do dia, com profissionais, pacientes, alertas e choques"
         >
           <Users className="h-4 w-4" />
-          Todas duplas/grupos
+          Duplas/grupos
         </button>
         <button
           onClick={onOpenCapacity}
@@ -140,7 +145,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
           title="Capacidade de atendimento do dia: horários com dupla/grupo, individuais, livres (07h às 18h) e salas vazias"
         >
           <Gauge className="h-4 w-4" />
-          Capacidade de atendimento
+          Capacidade
         </button>
         <button
           onClick={onOpenRoomMap}
@@ -158,7 +163,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
           title="Todos os choques de horário do dia: paciente, profissionais, especialidades e se era dupla ou grupo"
         >
           <Zap className="h-4 w-4" />
-          Todos os choques
+          Choques
           {hasDayData && (
             <span
               className={`min-w-[20px] rounded-full px-1.5 py-0.5 text-center text-[10px] font-extrabold ${
@@ -190,7 +195,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
             title="Fazer upload de arquivos PS120108 (.htm ou .html) de segunda a sábado"
           >
             <Upload className="h-4 w-4" />
-            Upload de arquivos
+            Upload
           </button>
 
           <button
@@ -200,7 +205,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
             title="Gerenciar quais terapeutas ocupam cada sala"
           >
             <SlidersHorizontal className="h-3.5 w-3.5 text-brand-700" />
-            Organizar salas ({activeTherapistsCount}/{totalTherapists})
+            Revisar salas ({activeTherapistsCount}/{totalTherapists})
           </button>
 
           <button
@@ -220,7 +225,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
             ) : (
               <Eye className="h-3.5 w-3.5 text-brand-700" />
             )}
-            {quickHideVisible > 0 || quickHideTotal === 0 ? 'Ocultar' : 'Mostrar'} atend. terapêutico/especialidade
+            {quickHideVisible > 0 || quickHideTotal === 0 ? 'Ocultar' : 'Mostrar'} AT/Sem especialidade
             {quickHideTotal > 0 && ` (${quickHideVisible > 0 ? quickHideVisible : quickHideTotal})`}
           </button>
 
@@ -244,7 +249,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
             title="Baixar planilha Excel (.xlsx) no mesmo formato da tabela"
           >
             {spinnerOr('excel', <FileSpreadsheet className="h-3.5 w-3.5" />)}
-            Baixar Excel
+            Excel
           </button>
 
           <button
@@ -254,7 +259,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
             title="Gerar PDF (A4 paisagem): uma página por turno com as salas, legenda e choques"
           >
             {spinnerOr('pdf', <FileText className="h-3.5 w-3.5" />)}
-            Imprimir PDF
+            PDF
           </button>
 
           <button
@@ -264,7 +269,7 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
             title="Salvar arquivo HTML independente para abrir offline em qualquer computador ou celular"
           >
             {spinnerOr('html', <Download className="h-3.5 w-3.5" />)}
-            Salvar HTML
+            HTML
           </button>
         </div>
       </div>
@@ -303,6 +308,26 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
           >
             12h–13h: {showLunchPlaceholder ? 'legenda "ALMOÇO"' : 'células livres'}
           </button>
+          {/* Visualização da grade */}
+          <div className="inline-flex items-center rounded-lg border border-brand-200 bg-white p-0.5" role="group" aria-label="Visualização">
+            <span className="px-1.5 text-[10px] font-bold uppercase text-slate-400">Visualização</span>
+            {(['basica', 'mapa'] as const).map((value) => (
+              <button
+                key={value}
+                onClick={() => onChangeViewMode(value)}
+                className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
+                  viewMode === value ? 'bg-brand-700 text-white' : 'text-brand-800 hover:bg-brand-50'
+                }`}
+                title={
+                  value === 'mapa'
+                    ? 'Uma coluna por sala da unidade, conforme o Mapa de sala (profissional da manhã e da tarde, etiquetas e salas vazias)'
+                    : 'Uma coluna por profissional, na ordem de "Revisar salas"'
+                }
+              >
+                {value === 'mapa' ? 'Mapa de sala' : 'Básica'}
+              </button>
+            ))}
+          </div>
           {/* Tamanho do horário da grade */}
           <div className="inline-flex rounded-lg border border-brand-200 bg-white p-0.5" role="group" aria-label="Tamanho da grade">
             {([30, 60] as const).map((value) => (

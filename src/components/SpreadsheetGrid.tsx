@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { TherapistSchedule } from '../types';
-import { Plus, Edit2, Check, X, ZoomIn, ZoomOut, Users, Zap, Maximize2, Upload, FileSpreadsheet, EyeOff } from 'lucide-react';
+import { Plus, Edit2, Check, X, ZoomIn, ZoomOut, Users, Zap, Maximize2, Upload, FileSpreadsheet, EyeOff, Map as MapIcon, Repeat } from 'lucide-react';
 import { analyzeCellSlot } from '../utils/clinicalAlerts';
 import { findScheduleConflictsForDay, getConflictingPatientsForCell } from '../utils/conflictUtils';
 import { PatientCellDisplay } from './PatientCellDisplay';
+import { RoomColumn } from '../utils/roomMap';
 
 interface SpreadsheetGridProps {
   morningTimes: string[];
@@ -22,6 +23,21 @@ interface SpreadsheetGridProps {
   dayLabel: string;
   onOpenUpload: () => void;
   onOpenRoomConfig: () => void;
+  /** Visualização "Mapa de sala": uma coluna por sala (null = visualização básica) */
+  roomColumns?: RoomColumn[] | null;
+  onOpenRoomMap?: () => void;
+  onUseBasicView?: () => void;
+}
+
+/** Coluna da grade: na visualização básica, a mesma profissional nos dois turnos. */
+interface GridColumn {
+  key: string;
+  roomName: string;
+  tags: string[];
+  morning: TherapistSchedule | null;
+  afternoon: TherapistSchedule | null;
+  changed: boolean;
+  isMap: boolean;
 }
 
 type Period = 'morning' | 'midday' | 'afternoon';
@@ -60,6 +76,9 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
   dayLabel,
   onOpenUpload,
   onOpenRoomConfig,
+  roomColumns = null,
+  onOpenRoomMap,
+  onUseBasicView,
 }) => {
   // Editing state for cells
   const [editingCell, setEditingCell] = useState<{ therapistId: string; time: string } | null>(null);
@@ -92,7 +111,31 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     });
   }, []);
 
-  const naturalTableWidth = TIME_COL_WIDTH + activeTherapists.length * ROOM_COL_WIDTH;
+  const isMapView = Boolean(roomColumns);
+  const columns = useMemo<GridColumn[]>(
+    () =>
+      roomColumns
+        ? roomColumns.map((c) => ({ ...c, isMap: true }))
+        : activeTherapists.map((t) => ({
+            key: t.id,
+            roomName: t.roomName,
+            tags: [],
+            morning: t,
+            afternoon: t,
+            changed: false,
+            isMap: false,
+          })),
+    [roomColumns, activeTherapists]
+  );
+  // Profissionais presentes na grade (no Mapa de sala, as que estão em alguma sala)
+  const gridTherapists = useMemo(() => {
+    if (!roomColumns) return activeTherapists;
+    const byId = new Map<string, TherapistSchedule>();
+    columns.forEach((c) => [c.morning, c.afternoon].forEach((t) => t && byId.set(t.id, t)));
+    return Array.from(byId.values());
+  }, [roomColumns, columns, activeTherapists]);
+
+  const naturalTableWidth = TIME_COL_WIDTH + columns.length * ROOM_COL_WIDTH;
 
   const fitToWidth = () => {
     const container = scrollRef.current;
@@ -111,7 +154,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [setZoom, activeTherapists.length]);
+  }, [setZoom, columns.length]);
 
   const startEditCell = (therapistId: string, time: string) => {
     setEditingCell({ therapistId, time });
@@ -162,13 +205,58 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
 
   // Compute all schedule conflicts (same patient in 2+ rooms at same time) for active therapists
   const conflictsMap = useMemo(() => {
-    return findScheduleConflictsForDay(activeTherapists, allGridTimes, getCellContent, slotMinutes);
-  }, [activeTherapists, allGridTimes, getCellContent, slotMinutes]);
+    return findScheduleConflictsForDay(gridTherapists, allGridTimes, getCellContent, slotMinutes);
+  }, [gridTherapists, allGridTimes, getCellContent, slotMinutes]);
 
   // ---------------------------------------------------------------------------
   // Empty state (antes do upload) e salas ocultas
   // ---------------------------------------------------------------------------
-  if (activeTherapists.length === 0) {
+  if (isMapView && columns.length === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed border-neutral-300 bg-white px-6 py-14 text-center shadow-xs">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-neutral-100 text-brand-700">
+          <MapIcon className="h-7 w-7" />
+        </div>
+        <h3 className="mt-4 text-base font-bold text-neutral-900">
+          {hasReport ? `O Mapa de sala de ${dayLabel} ainda não tem profissionais nas salas` : `Nenhuma agenda carregada para ${dayLabel}`}
+        </h3>
+        <p className="mx-auto mt-1 max-w-md text-sm text-gray-500">
+          {hasReport
+            ? 'Monte o Mapa de sala (quantidade de salas e quem fica em cada uma) para ver a grade por sala, ou volte para a visualização básica.'
+            : 'Faça o upload dos relatórios .htm (PS120108) de segunda a sábado para montar a grade.'}
+        </p>
+        <div className="mt-5 flex flex-wrap justify-center gap-2">
+          {hasReport ? (
+            <>
+              <button
+                onClick={onOpenRoomMap}
+                className="inline-flex items-center gap-2 rounded-lg bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-brand-800"
+              >
+                <MapIcon className="h-4 w-4" />
+                Abrir Mapa de sala
+              </button>
+              <button
+                onClick={onUseBasicView}
+                className="inline-flex items-center gap-2 rounded-lg border border-brand-200 bg-white px-5 py-2.5 text-sm font-semibold text-brand-800 hover:bg-brand-50"
+              >
+                Visualização básica
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={onOpenUpload}
+              className="inline-flex items-center gap-2 rounded-lg bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-brand-800"
+            >
+              <Upload className="h-4 w-4" />
+              Fazer upload dos arquivos
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (!isMapView && activeTherapists.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-neutral-300 bg-white px-6 py-14 text-center shadow-xs">
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-neutral-100 text-brand-700">
@@ -179,7 +267,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
         </h3>
         <p className="mx-auto mt-1 max-w-md text-sm text-gray-500">
           {hasReport
-            ? 'Use "Organizar salas" para voltar a exibir as colunas na grade.'
+            ? 'Use "Revisar salas" para voltar a exibir as colunas na grade.'
             : 'Faça o upload dos relatórios .htm (PS120108) de segunda a sábado para montar a grade de salas e validar as agendas.'}
         </p>
         <button
@@ -187,7 +275,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
           className="mt-5 inline-flex items-center gap-2 rounded-lg bg-brand-700 px-5 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-brand-800"
         >
           {hasReport ? <EyeOff className="h-4 w-4" /> : <Upload className="h-4 w-4" />}
-          {hasReport ? 'Organizar salas' : 'Fazer upload dos arquivos'}
+          {hasReport ? 'Revisar salas' : 'Fazer upload dos arquivos'}
         </button>
       </div>
     );
@@ -196,28 +284,58 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
   const stickyTimeCell = 'sticky left-0 z-10 w-[68px] min-w-[68px] max-w-[68px] border border-black';
   const stickyHeadCell = 'sticky left-0 z-30 w-[68px] min-w-[68px] max-w-[68px] border border-black';
 
+  const colStyle = { width: ROOM_COL_WIDTH, minWidth: ROOM_COL_WIDTH, maxWidth: ROOM_COL_WIDTH };
+
   const headerRow = (
     field: 'roomName' | 'name' | 'specialty',
     label: string,
     rowClass: string,
     editable: boolean,
     keyPrefix: string,
-    sticky: string
+    sticky: string,
+    shift: 'am' | 'pm' = 'am'
   ) => (
     <tr className={rowClass}>
       <th className={`${sticky} ${rowClass} py-1.5 px-0.5 text-center text-[9px] font-bold tracking-tight`}>{label}</th>
-      {activeTherapists.map((therapist) => {
+      {columns.map((col) => {
+        // Mapa de sala: nome da sala com as etiquetas
+        if (field === 'roomName' && col.isMap) {
+          return (
+            <th key={`${keyPrefix}-${col.key}`} className={`border border-black py-1.5 px-1.5 text-center font-bold ${rowClass}`} style={colStyle}>
+              <span className="block leading-tight">{col.roomName}</span>
+              {col.tags.length > 0 && (
+                <span className="mt-0.5 flex flex-wrap justify-center gap-0.5">
+                  {col.tags.map((t) => (
+                    <span key={t} className="rounded bg-accent-500 px-1 py-px text-[9px] font-bold leading-tight tracking-normal text-white">
+                      {t}
+                    </span>
+                  ))}
+                </span>
+              )}
+            </th>
+          );
+        }
+
+        const therapist = field === 'roomName' || shift === 'am' ? col.morning : col.afternoon;
+        const changed = shift === 'pm' && col.changed;
+        const cellClass = changed && field === 'name' ? 'bg-accent-600 text-white' : rowClass;
+
+        if (!therapist) {
+          return (
+            <th key={`${keyPrefix}-${col.key}`} className={`border border-black py-1.5 px-1.5 text-center ${rowClass}`} style={colStyle}>
+              <span className="block font-semibold italic opacity-70">{field === 'name' ? 'Vazio' : '—'}</span>
+            </th>
+          );
+        }
+
         const value = field === 'specialty' ? therapist.specialty || 'ESPECIALIDADE' : therapist[field];
         const isEditing = editable && editingHeader?.therapistId === therapist.id && editingHeader.field === field;
         return (
           <th
-            key={`${keyPrefix}-${therapist.id}`}
-            className={`border border-black py-1.5 px-1.5 text-center font-bold ${rowClass}`}
-            style={{
-              width: ROOM_COL_WIDTH,
-              minWidth: ROOM_COL_WIDTH,
-              maxWidth: ROOM_COL_WIDTH,
-            }}
+            key={`${keyPrefix}-${col.key}`}
+            className={`border border-black py-1.5 px-1.5 text-center font-bold ${cellClass}`}
+            style={colStyle}
+            title={changed ? 'Mudança de profissional: à tarde a sala fica com outra profissional' : undefined}
           >
             {isEditing ? (
               <div className="flex items-center justify-center gap-1">
@@ -248,6 +366,12 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
             ) : (
               <span className="block whitespace-normal break-words leading-tight">{value}</span>
             )}
+            {changed && field === 'name' && (
+              <span className="mt-0.5 inline-flex items-center gap-0.5 rounded bg-white px-1 py-px text-[8.5px] font-extrabold uppercase tracking-wide text-accent-800">
+                <Repeat className="h-2.5 w-2.5" />
+                Mudança de profissional
+              </span>
+            )}
           </th>
         );
       })}
@@ -262,7 +386,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     const isLunch = isMidday && !content && showLunchPlaceholder;
     const conflictingPatients = getConflictingPatientsForCell(
       conflictsMap,
-      activeTherapists,
+      gridTherapists,
       therapist.id,
       time,
       analysis.patients.map((p) => p.name),
@@ -360,10 +484,33 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
     </td>
   );
 
+  // Sala sem profissional no turno (Mapa de sala)
+  const renderVacantCell = (col: GridColumn, times: string[], period: Period, time: string) =>
+    period === 'midday' ? (
+      <td key={`vazio-${col.key}-${time}`} className="border border-black bg-slate-50" />
+    ) : (
+      <td
+        key={`vazio-${col.key}-${times[0]}`}
+        rowSpan={times.length}
+        className="border border-black bg-slate-50 align-middle text-center text-[1.05em] font-bold tracking-[0.2em] text-slate-400"
+        title="Sala sem profissional neste turno (Mapa de sala)"
+      >
+        VAZIO
+      </td>
+    );
+
   const timeRows = (times: string[], period: Period) => {
     const mergeable = period !== 'midday';
-    const emptyIds = new Set(
-      mergeable ? activeTherapists.filter((t) => isShiftEmpty(t, times)).map((t) => t.id) : []
+    const therapistOf = (col: GridColumn) => (period === 'afternoon' ? col.afternoon : col.morning);
+    const emptyKeys = new Set(
+      mergeable
+        ? columns
+            .filter((c) => {
+              const t = therapistOf(c);
+              return t && isShiftEmpty(t, times);
+            })
+            .map((c) => c.key)
+        : []
     );
     return times.map((time, rowIdx) => (
       <tr key={`${period}-${time}`}>
@@ -372,8 +519,12 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
         >
           {time}
         </td>
-        {activeTherapists.map((therapist) => {
-          if (emptyIds.has(therapist.id)) {
+        {columns.map((col) => {
+          const therapist = therapistOf(col);
+          if (!therapist) {
+            return period === 'midday' || rowIdx === 0 ? renderVacantCell(col, times, period, time) : null;
+          }
+          if (emptyKeys.has(col.key)) {
             return rowIdx === 0 ? renderEmptyShiftCell(therapist, times) : null;
           }
           return renderCell(therapist, time, period === 'midday');
@@ -414,7 +565,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
           </button>
         )}
       </td>
-      <td colSpan={activeTherapists.length} className="border border-black bg-slate-50/50 py-0.5 pl-3 text-left text-[10px] italic text-slate-400">
+      <td colSpan={columns.length} className="border border-black bg-slate-50/50 py-0.5 pl-3 text-left text-[10px] italic text-slate-400">
         {showAddTimePrompt === period ? hint : ''}
       </td>
     </tr>
@@ -427,7 +578,8 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
       {/* Barra de zoom da tabela */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50/70 px-3 py-2 print:hidden">
         <div className="text-xs font-semibold text-slate-600">
-          {activeTherapists.length} sala(s) · {allGridTimes.length} horários
+          {columns.length} sala(s) · {allGridTimes.length} horários
+          {isMapView && <span className="ml-1.5 rounded bg-accent-50 px-1.5 py-0.5 text-accent-800 ring-1 ring-accent-200">Mapa de sala</span>}
         </div>
         <div className="flex items-center gap-1.5" title="Dica: Ctrl + roda do mouse sobre a tabela também ajusta o zoom">
           <button
@@ -481,7 +633,7 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
           style={{ zoom, width: naturalTableWidth, tableLayout: 'fixed' }}
         >
           <thead className="sticky top-0 z-20">
-            {headerRow('roomName', 'SALA', 'bg-[#1d4f91] text-white tracking-wider', true, 'sala', stickyHeadCell)}
+            {headerRow('roomName', 'SALA', 'bg-[#1d4f91] text-white tracking-wider', !isMapView, 'sala', stickyHeadCell)}
             {headerRow('name', 'TERAPEUTA', 'bg-[#8fb3e0] text-[#0f2747]', true, 'name', stickyHeadCell)}
             {headerRow('specialty', 'HORÁRIO', 'bg-[#dde9f7] text-[#1d4f91]', true, 'spec', stickyHeadCell)}
           </thead>
@@ -499,8 +651,8 @@ export const SpreadsheetGrid: React.FC<SpreadsheetGridProps> = ({
             )}
 
             {/* Cabeçalhos repetidos para o turno da tarde */}
-            {headerRow('name', 'TERAPEUTA', 'bg-[#8fb3e0] text-[#0f2747]', false, 'pm-name', stickyTimeCell)}
-            {headerRow('specialty', 'HORÁRIO', 'bg-[#dde9f7] text-[#1d4f91]', false, 'pm-spec', stickyTimeCell)}
+            {headerRow('name', 'TERAPEUTA', 'bg-[#8fb3e0] text-[#0f2747]', false, 'pm-name', stickyTimeCell, 'pm')}
+            {headerRow('specialty', 'HORÁRIO', 'bg-[#dde9f7] text-[#1d4f91]', false, 'pm-spec', stickyTimeCell, 'pm')}
 
             {timeRows(afternoonTimes, 'afternoon')}
             {addTimeRow('afternoon', 'Hora', 'Inserir horário personalizado de tarde', 'Pressione Enter para adicionar horário de tarde')}

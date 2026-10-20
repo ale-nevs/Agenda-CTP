@@ -11,7 +11,7 @@ import { AppHeader } from './components/AppHeader';
 import { CapacityModal } from './components/CapacityModal';
 import { RoomMapModal } from './components/RoomMapModal';
 import { CapacityIgnoreConfig, computeCapacity, DEFAULT_CAPACITY_IGNORE } from './utils/capacity';
-import { RoomMapDay, RoomMaps, roomOf } from './utils/roomMap';
+import { buildRoomColumns, RoomMapDay, RoomMaps, roomOf, RoomTags } from './utils/roomMap';
 import { downloadAgendaBackup, readAgendaBackup } from './utils/agendaBackup';
 import { analyzeCellSlot } from './utils/clinicalAlerts';
 import { getUnitInfo } from './utils/unitInfo';
@@ -101,6 +101,41 @@ export default function App() {
   // Capacidade de atendimento (o que fica fora do cálculo) e Mapa de sala por dia
   const [capacityIgnore, setCapacityIgnore] = useState<CapacityIgnoreConfig>(DEFAULT_CAPACITY_IGNORE);
   const [roomMaps, setRoomMaps] = useState<RoomMaps>({});
+
+  // Etiquetas das salas da unidade (ex.: "TO Ayres", "Cozinha"), guardadas neste navegador
+  const [roomTags, setRoomTagsState] = useState<RoomTags>(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem('agenda-ctp:etiquetas') || '{}');
+      return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+    } catch {
+      return {};
+    }
+  });
+  const setRoomTags = (tags: RoomTags) => {
+    setRoomTagsState(tags);
+    try {
+      localStorage.setItem('agenda-ctp:etiquetas', JSON.stringify(tags));
+    } catch {
+      /* armazenamento indisponível */
+    }
+  };
+
+  // Visualização da grade: básica (por profissional) ou Mapa de sala (por sala)
+  const [viewMode, setViewModeState] = useState<'basica' | 'mapa'>(() => {
+    try {
+      return localStorage.getItem('agenda-ctp:visualizacao') === 'mapa' ? 'mapa' : 'basica';
+    } catch {
+      return 'basica';
+    }
+  });
+  const setViewMode = (mode: 'basica' | 'mapa') => {
+    setViewModeState(mode);
+    try {
+      localStorage.setItem('agenda-ctp:visualizacao', mode);
+    } catch {
+      /* armazenamento indisponível */
+    }
+  };
   const importInputRef = React.useRef<HTMLInputElement>(null);
 
   // When reports are uploaded via batch or single upload
@@ -485,8 +520,25 @@ export default function App() {
     return list;
   }, [isGroupsOpen, allTimeSlots, middayTimes, activeTherapists, getCellContent, slotMinutes, conflictsMap]);
 
+  // Visualização Mapa de sala: colunas por sala conforme o mapa do dia
+  const roomColumns = useMemo(
+    () => (viewMode === 'mapa' ? buildRoomColumns(roomMaps[activeDay], report.therapists, mergedTherapists, roomTags) : null),
+    [viewMode, roomMaps, activeDay, report, mergedTherapists, roomTags]
+  );
+  const capacityRooms = useMemo(
+    () =>
+      roomColumns && roomColumns.length > 0
+        ? roomColumns.map((c) => ({ key: c.key, roomName: c.roomName, morning: c.morning, afternoon: c.afternoon }))
+        : null,
+    [roomColumns]
+  );
+
   // Capacidade de atendimento do dia (calculada só com a janela aberta)
-  const hiddenIds = useMemo(() => new Set(dayHiddenRooms[activeDay] || []), [dayHiddenRooms, activeDay]);
+  // No Mapa de sala as ocultas já ficam fora do mapa; na básica, as ocultas em "Revisar salas" ficam fora por padrão
+  const hiddenIds = useMemo(
+    () => (capacityRooms ? new Set<string>() : new Set(dayHiddenRooms[activeDay] || [])),
+    [capacityRooms, dayHiddenRooms, activeDay]
+  );
   const capacityResult = useMemo(
     () =>
       computeCapacity({
@@ -498,8 +550,9 @@ export default function App() {
         getCellContent,
         slotMinutes,
         config: capacityIgnore,
+        rooms: isCapacityOpen ? capacityRooms : null,
       }),
-    [isCapacityOpen, mergedTherapists, hiddenIds, morningTimes, middayTimes, afternoonTimes, getCellContent, slotMinutes, capacityIgnore]
+    [isCapacityOpen, mergedTherapists, hiddenIds, morningTimes, middayTimes, afternoonTimes, getCellContent, slotMinutes, capacityIgnore, capacityRooms]
   );
 
   // Salas da unidade informadas no Mapa de sala para o dia
@@ -532,6 +585,8 @@ export default function App() {
         slotMinutes,
         capacityIgnore,
         roomMaps,
+        roomTags,
+        viewMode,
       },
       unitInfo?.fullName || clinicName
     );
@@ -563,6 +618,8 @@ export default function App() {
       setSlotMinutes(data.slotMinutes);
       setCapacityIgnore(data.capacityIgnore);
       setRoomMaps(data.roomMaps);
+      setRoomTags(data.roomTags);
+      setViewMode(data.viewMode);
     } catch (err) {
       console.error(err);
       alert(err instanceof Error ? err.message : 'Não foi possível importar o arquivo.');
@@ -654,6 +711,8 @@ export default function App() {
             quickHideTotal={quickHideIds.length}
             quickHideVisible={quickHideVisible}
             onQuickHide={handleQuickHide}
+            viewMode={viewMode}
+            onChangeViewMode={setViewMode}
           />
         </div>
 
@@ -700,6 +759,9 @@ export default function App() {
           dayLabel={report.dayOfWeek}
           onOpenUpload={() => setIsUploadOpen(true)}
           onOpenRoomConfig={() => setIsRoomConfigOpen(true)}
+          roomColumns={roomColumns}
+          onOpenRoomMap={() => setIsRoomMapOpen(true)}
+          onUseBasicView={() => setViewMode('basica')}
         />
 
         {/* Alerta de choque de horário */}
@@ -755,7 +817,7 @@ export default function App() {
           <div className="text-xs text-slate-600">
             <strong className="text-brand-800">Agenda completa em JSON</strong>
             <span className="ml-1.5">
-              todos os dias da semana de uma vez (segunda a sábado), com edições, salas, grade, capacidade e mapa de sala: salve para continuar depois ou em outro computador.
+              todos os dias da semana de uma vez (segunda a sábado), com edições, salas, grade, capacidade, mapa de sala e etiquetas das salas: salve para continuar depois ou em outro computador.
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -855,6 +917,9 @@ export default function App() {
           setIsCapacityOpen(false);
           setIsRoomMapOpen(true);
         }}
+        viewMode={viewMode}
+        onChangeViewMode={setViewMode}
+        mapReady={Boolean(capacityRooms)}
       />
 
       {/* Mapa de sala (montado ao abrir, começando no dia ativo) */}
@@ -869,6 +934,13 @@ export default function App() {
           onChangeRoomMap={handleChangeRoomMap}
           initialDay={hasDayData ? activeDay : DAYS_OF_WEEK.find((d) => weeklyReports[d.key])?.key || activeDay}
           clinic={unitInfo?.fullName || clinicName}
+          roomTags={roomTags}
+          onChangeRoomTags={(room, tags) => {
+            const next = { ...roomTags };
+            if (tags.length > 0) next[String(room)] = tags;
+            else delete next[String(room)];
+            setRoomTags(next);
+          }}
         />
       )}
 

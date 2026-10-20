@@ -22,6 +22,11 @@ export interface RoomMapDay {
 
 export type RoomMaps = Partial<Record<DayOfWeekKey, RoomMapDay>>;
 
+/** Etiquetas das salas da unidade (valem para todos os dias): número da sala -> etiquetas */
+export type RoomTags = Record<string, string[]>;
+
+export const tagsOf = (tags: RoomTags | undefined, room: number) => tags?.[String(room)] || [];
+
 export interface MapProfessional {
   key: string;
   name: string;
@@ -190,6 +195,60 @@ export function autoDistribute(day: RoomMapDay, pros: MapProfessional[], default
 }
 
 // ---------------------------------------------------------------------------
+// Visualização "Mapa de sala" da grade: uma coluna por sala da unidade
+// ---------------------------------------------------------------------------
+
+export interface RoomColumn {
+  key: string;
+  room: number;
+  roomName: string;
+  tags: string[];
+  /** Profissional da sala de manhã (inclui 12h–13h) e à tarde; null = sala vazia no turno */
+  morning: TherapistSchedule | null;
+  afternoon: TherapistSchedule | null;
+  /** Profissional da tarde diferente da manhã */
+  changed: boolean;
+}
+
+/** Monta as colunas da grade a partir do mapa do dia. Lista vazia = mapa ainda sem ninguém nas salas. */
+export function buildRoomColumns(
+  map: RoomMapDay | undefined,
+  baseTherapists: TherapistSchedule[],
+  mergedTherapists: TherapistSchedule[],
+  roomTags: RoomTags
+): RoomColumn[] {
+  if (!map) return [];
+  const mergedById = new Map(mergedTherapists.map((t) => [t.id, t]));
+  const byKey = new Map<string, TherapistSchedule>();
+  baseTherapists.forEach((base) => {
+    const key = normalizeTherapistName(base.name);
+    const merged = mergedById.get(base.id);
+    if (key && merged && !byKey.has(key)) byKey.set(key, merged);
+  });
+  const pick = (shift: Shift, room: number) => {
+    if (room > roomsOf(map, shift)) return null;
+    const key = occupantOf(map, shift, room);
+    return (key && byKey.get(key)) || null;
+  };
+  const total = Math.max(map.roomsManha, map.roomsTarde);
+  const columns: RoomColumn[] = [];
+  for (let room = 1; room <= total; room++) {
+    const morning = pick('manha', room);
+    const afternoon = pick('tarde', room);
+    columns.push({
+      key: `sala-${room}`,
+      room,
+      roomName: `SALA ${room}`,
+      tags: tagsOf(roomTags, room),
+      morning,
+      afternoon,
+      changed: Boolean(morning && afternoon && morning.id !== afternoon.id),
+    });
+  }
+  return columns.some((c) => c.morning || c.afternoon) ? columns : [];
+}
+
+// ---------------------------------------------------------------------------
 // Impressão do mapa de salas (um dia ou a semana)
 // ---------------------------------------------------------------------------
 
@@ -213,7 +272,7 @@ function cellHtml(d: RoomMapPrintDay, shift: Shift, room: number): string {
   return `<td><div class="nome">${esc(pro.name)}</div><div class="esp">${esc(pro.specialty)}</div></td>`;
 }
 
-export async function printRoomMap(days: RoomMapPrintDay[], clinic: string) {
+export async function printRoomMap(days: RoomMapPrintDay[], clinic: string, roomTags: RoomTags = {}) {
   const logo = await getLogoDataUrl();
   const fontFace = await getEmbeddedFontFaceCss();
   const week = days.length > 1;
@@ -230,7 +289,9 @@ export async function printRoomMap(days: RoomMapPrintDay[], clinic: string) {
     </thead>`;
   const body = Array.from({ length: maxRooms }, (_, i) => {
     const room = i + 1;
-    return `<tr><td class="sala">SALA ${room}</td>${days.map((d) => cellHtml(d, 'manha', room) + cellHtml(d, 'tarde', room)).join('')}</tr>`;
+    const tags = tagsOf(roomTags, room);
+    const tagHtml = tags.length ? `<div class="tags">${tags.map((t) => `<span>${esc(t)}</span>`).join('')}</div>` : '';
+    return `<tr><td class="sala">SALA ${room}${tagHtml}</td>${days.map((d) => cellHtml(d, 'manha', room) + cellHtml(d, 'tarde', room)).join('')}</tr>`;
   }).join('');
 
   const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>${esc(
@@ -252,6 +313,8 @@ export async function printRoomMap(days: RoomMapPrintDay[], clinic: string) {
     tr.h1 th span { font-weight: 500; font-size: .85em; }
     tr.h2 th { background: ${BRAND.headerTerapeuta}; color: ${BRAND.headerText}; font-weight: 700; font-size: .9em; }
     th.sala, td.sala { width: ${week ? 15 : 22}mm; text-align: center; font-weight: 800; background: ${BRAND.headerEspecialidade}; color: ${BRAND.headerSala}; }
+    .tags { margin-top: 2px; display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; }
+    .tags span { background: ${BRAND.accent}; color: #fff; border-radius: 3px; padding: 0 3px; font-size: .78em; font-weight: 700; line-height: 1.4; }
     .nome { font-weight: 700; color: #111; line-height: 1.2; }
     .esp { font-size: .82em; color: ${BRAND.headerSala}; font-weight: 600; margin-top: 1px; }
     td.livre { color: #9ca3af; text-align: center; font-style: italic; }
