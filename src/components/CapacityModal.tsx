@@ -430,7 +430,7 @@ export const CapacityModal: React.FC<CapacityModalProps> = ({
                     />
                     <span>
                       <span className="font-semibold text-gray-900">Contar 12h às 13h</span>
-                      <span className="text-gray-500"> (desmarque para tirar o almoço dos horários livres)</span>
+                      <span className="text-gray-500"> (desmarcado: o almoço não conta como horário livre)</span>
                     </span>
                   </label>
                 </div>
