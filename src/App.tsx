@@ -941,6 +941,10 @@ export default function App() {
             else delete next[String(room)];
             setRoomTags(next);
           }}
+          onImportRoomMaps={(maps, tags) => {
+            setRoomMaps((prev) => ({ ...prev, ...maps }));
+            if (tags) setRoomTags(tags);
+          }}
         />
       )}
 
