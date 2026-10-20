@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { X, Map as MapIcon, Printer, Wand2, EyeOff, Eye, Link2, Undo2, GripVertical, RotateCcw, Tag, Plus } from 'lucide-react';
+import { X, Map as MapIcon, Printer, Wand2, EyeOff, Eye, Link2, Undo2, GripVertical, RotateCcw, Tag, Plus, FileDown, FileUp, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { DayOfWeekKey, DAYS_OF_WEEK, ParsedReport, TherapistSchedule } from '../types';
 import { normalizeTherapistName } from '../utils/conflictUtils';
 import {
@@ -25,6 +25,7 @@ import {
   tagsOf,
   unassign,
 } from '../utils/roomMap';
+import { downloadRoomMapFile, readRoomMapFile, RoomMapImportResult } from '../utils/roomMapTransfer';
 
 interface RoomMapModalProps {
   isOpen: boolean;
@@ -39,6 +40,8 @@ interface RoomMapModalProps {
   /** Etiquetas das salas (ex.: "TO Ayres", "Cozinha"), iguais em todos os dias */
   roomTags: RoomTags;
   onChangeRoomTags: (room: number, tags: string[]) => void;
+  /** Importação do mapa da semana: mapas dos dias do arquivo e etiquetas (null = manter as atuais) */
+  onImportRoomMaps: (maps: RoomMaps, tags: RoomTags | null) => void;
 }
 
 interface DragInfo {
@@ -60,6 +63,7 @@ export const RoomMapModal: React.FC<RoomMapModalProps> = ({
   clinic,
   roomTags,
   onChangeRoomTags,
+  onImportRoomMaps,
 }) => {
   const [view, setView] = useState<DayOfWeekKey | 'SEMANA'>(initialDay);
   const [selected, setSelected] = useState<DragInfo | null>(null);
@@ -67,6 +71,8 @@ export const RoomMapModal: React.FC<RoomMapModalProps> = ({
   const dragRef = useRef<DragInfo | null>(null);
   const [tagRoom, setTagRoom] = useState<number | null>(null);
   const [tagDraft, setTagDraft] = useState('');
+  const [importReport, setImportReport] = useState<RoomMapImportResult | null>(null);
+  const importRef = useRef<HTMLInputElement>(null);
 
   const daysWithData = DAYS_OF_WEEK.filter((d) => weeklyReports[d.key]);
 
@@ -89,6 +95,93 @@ export const RoomMapModal: React.FC<RoomMapModalProps> = ({
   }, [weeklyReports, dayTherapistOverrides, dayHiddenRooms, roomMaps]);
 
   if (!isOpen) return null;
+
+  // ----- exportar / importar o mapa da semana -----
+  const weekState = () => {
+    const out: Parameters<typeof downloadRoomMapFile>[0] = {};
+    DAYS_OF_WEEK.forEach(({ key }) => {
+      const d = dayData[key];
+      if (!d) return;
+      out[key] = {
+        ...d,
+        hiddenKeys: d.pros.filter((p) => isHiddenInMap(d.map, p.key, d.defaultHidden)).map((p) => p.key),
+      };
+    });
+    return out;
+  };
+
+  const handleImportFile = async (file: File) => {
+    try {
+      const state = weekState();
+      const withDefaults: Parameters<typeof readRoomMapFile>[1] = {};
+      DAYS_OF_WEEK.forEach(({ key }) => {
+        if (state[key]) withDefaults[key] = { ...state[key]!, defaultHidden: dayData[key]!.defaultHidden };
+      });
+      const result = await readRoomMapFile(file, withDefaults);
+      const labels = result.reports.map((r) => DAYS_OF_WEEK.find((d) => d.key === r.day)?.label).join(', ');
+      if (!window.confirm(`Importar o mapa de sala e substituir o mapa de: ${labels}?\n\nQuem não bater nome e especialidade fica de fora.`)) {
+        return;
+      }
+      onImportRoomMaps(result.maps, result.roomTags);
+      setImportReport(result);
+      setSelected(null);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Não foi possível importar o mapa de sala.');
+    }
+  };
+
+  const dayName = (k: DayOfWeekKey) => DAYS_OF_WEEK.find((d) => d.key === k)?.label || k;
+
+  const renderImportReport = () => {
+    if (!importReport) return null;
+    const leftOut = importReport.reports.reduce((n, r) => n + r.leftOut.length, 0);
+    const placed = importReport.reports.reduce((n, r) => n + r.placed, 0);
+    return (
+      <div className={`mb-4 rounded-xl border px-4 py-3 text-xs ${leftOut > 0 ? 'border-amber-300 bg-amber-50' : 'border-accent-200 bg-accent-50'}`}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm font-bold text-gray-900">
+            {leftOut > 0 ? <AlertTriangle className="h-4 w-4 text-amber-600" /> : <CheckCircle2 className="h-4 w-4 text-accent-600" />}
+            Mapa importado: {placed} lugar(es) preenchido(s){leftOut > 0 ? ` · ${leftOut} ficaram de fora` : ''}
+          </div>
+          <button onClick={() => setImportReport(null)} className="rounded p-0.5 text-gray-500 hover:bg-white" title="Fechar resumo">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="mt-2 grid gap-2 md:grid-cols-2">
+          {importReport.reports.map((r) => (
+            <div key={r.day} className="rounded-lg border border-white/80 bg-white px-3 py-2">
+              <div className="font-bold text-brand-900">
+                {dayName(r.day)}: {r.placed} em sala{r.hidden ? ` · ${r.hidden} oculta(s)` : ''}
+              </div>
+              {r.leftOut.length > 0 && (
+                <ul className="mt-1 space-y-0.5">
+                  {r.leftOut.map((o, i) => (
+                    <li key={i} className="text-gray-700">
+                      <span className="font-semibold">{o.name}</span>
+                      <span className="text-gray-500"> · {o.specialty || 'sem especialidade'} · {o.detail}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {r.notInFile.length > 0 && (
+                <div className="mt-1 text-gray-500">
+                  Sem sala (não estavam no arquivo): <span className="font-semibold text-gray-700">{r.notInFile.join(', ')}</span>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        {importReport.skippedDays.length > 0 && (
+          <div className="mt-2 text-gray-600">
+            Dias do arquivo sem agenda carregada (não importados): {importReport.skippedDays.map(dayName).join(', ')}.
+          </div>
+        )}
+        <div className="mt-1.5 text-[11px] text-gray-500">
+          O mapa só usa quem tem o mesmo nome e a mesma especialidade (Fono e Fono + Prompt, TO e TO + Ayres contam como a mesma).
+        </div>
+      </div>
+    );
+  };
 
   const current = view !== 'SEMANA' ? dayData[view] : undefined;
 
@@ -308,11 +401,44 @@ export const RoomMapModal: React.FC<RoomMapModalProps> = ({
       })}
       <button
         onClick={() => {
+          if (downloadRoomMapFile(weekState(), roomTags, clinic) === 0) {
+            alert('Nenhum dia tem profissionais nas salas ainda. Monte o mapa de pelo menos um dia para exportar.');
+          }
+        }}
+        disabled={daysWithData.length === 0}
+        className="ml-auto inline-flex items-center gap-1 rounded-lg border border-brand-200 bg-white px-2.5 py-1 text-xs font-semibold text-brand-800 hover:bg-brand-100 disabled:opacity-40"
+        title="Baixar um JSON só com o mapa de sala da semana toda (salas, profissionais, ocultas e etiquetas)"
+      >
+        <FileDown className="h-3.5 w-3.5" />
+        Exportar mapa da semana
+      </button>
+      <button
+        onClick={() => importRef.current?.click()}
+        disabled={daysWithData.length === 0}
+        className="inline-flex items-center gap-1 rounded-lg border border-brand-200 bg-white px-2.5 py-1 text-xs font-semibold text-brand-800 hover:bg-brand-100 disabled:opacity-40"
+        title="Abrir um mapa de sala exportado: monta o mapa de cada dia com quem bate nome e especialidade"
+      >
+        <FileUp className="h-3.5 w-3.5" />
+        Importar mapa
+      </button>
+      <input
+        ref={importRef}
+        type="file"
+        accept=".json,application/json"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = '';
+          if (file) handleImportFile(file);
+        }}
+      />
+      <button
+        onClick={() => {
           setView('SEMANA');
           setSelected(null);
         }}
         disabled={daysWithData.length === 0}
-        className={`ml-auto rounded-lg px-3 py-1 text-xs font-bold ${
+        className={`rounded-lg px-3 py-1 text-xs font-bold ${
           view === 'SEMANA' ? 'bg-brand-700 text-white' : 'border border-brand-200 bg-white text-brand-800 hover:bg-brand-100'
         } disabled:opacity-40`}
       >
@@ -648,7 +774,10 @@ export const RoomMapModal: React.FC<RoomMapModalProps> = ({
           </button>
         </div>
         <div className="border-b border-gray-200 bg-brand-50/60 px-4 py-3">{dayButtons}</div>
-        <div className="flex-1 overflow-y-auto bg-gray-50/40 p-4">{view === 'SEMANA' ? renderWeek() : renderDay()}</div>
+        <div className="flex-1 overflow-y-auto bg-gray-50/40 p-4">
+          {renderImportReport()}
+          {view === 'SEMANA' ? renderWeek() : renderDay()}
+        </div>
       </div>
     </div>
   );

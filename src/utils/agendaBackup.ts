@@ -52,6 +52,21 @@ function isReport(v: unknown): v is ParsedReport {
   return isObject(v) && Array.isArray(v.therapists) && typeof v.dayOfWeek === 'string';
 }
 
+/** Nome do arquivo: prefixo, unidade e data/hora (ex.: agenda-centro-de-terapias_2026-10-20_1345.json). */
+export function jsonFileName(prefix: string, clinic: string) {
+  const now = new Date();
+  const p2 = (n: number) => String(n).padStart(2, '0');
+  const stamp = `${now.getFullYear()}-${p2(now.getMonth() + 1)}-${p2(now.getDate())}_${p2(now.getHours())}${p2(now.getMinutes())}`;
+  const unit = (clinic || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase()
+    .slice(0, 40);
+  return `${prefix}-${unit || 'ctp'}_${stamp}.json`;
+}
+
 export function downloadAgendaBackup(data: AgendaBackupData, clinic: string) {
   const payload: AgendaBackupFile = {
     app: BACKUP_APP_ID,
@@ -60,17 +75,8 @@ export function downloadAgendaBackup(data: AgendaBackupData, clinic: string) {
     clinic,
     data,
   };
-  const now = new Date();
-  const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
-  const unit = (clinic || 'agenda')
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-zA-Z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .toLowerCase()
-    .slice(0, 40);
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
-  triggerDownload(blob, `agenda-${unit || 'ctp'}_${stamp}.json`);
+  triggerDownload(blob, jsonFileName('agenda', clinic));
 }
 
 /** Lê e valida um arquivo exportado por "Exportar agenda". Lança erro com mensagem amigável. */
