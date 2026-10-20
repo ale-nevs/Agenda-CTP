@@ -8,6 +8,11 @@ import { PatientScheduleModal } from './components/PatientScheduleModal';
 import { GroupsModal, GroupSlotItem } from './components/GroupsModal';
 import { ConflictsModal, ConflictItem } from './components/ConflictsModal';
 import { AppHeader } from './components/AppHeader';
+import { CapacityModal } from './components/CapacityModal';
+import { RoomMapModal } from './components/RoomMapModal';
+import { CapacityIgnoreConfig, computeCapacity, DEFAULT_CAPACITY_IGNORE } from './utils/capacity';
+import { RoomMapDay, RoomMaps, roomOf } from './utils/roomMap';
+import { downloadAgendaBackup, readAgendaBackup } from './utils/agendaBackup';
 import { analyzeCellSlot } from './utils/clinicalAlerts';
 import { getUnitInfo } from './utils/unitInfo';
 import { exportStandaloneHtml, exportExcel, exportPdf, ExportTableData } from './utils/exportUtils';
@@ -20,7 +25,7 @@ import {
   parsePatientsFromCellString,
 } from './utils/conflictUtils';
 import { APP_NAME, APP_SUBTITLE, LOGO_PATH, handleLogoError } from './brand';
-import { Info, AlertTriangle, Zap } from 'lucide-react';
+import { Info, AlertTriangle, Zap, FileDown, FileUp } from 'lucide-react';
 
 const EMPTY_WEEKLY_REPORTS: Record<DayOfWeekKey, ParsedReport | null> = {
   SEGUNDA: null,
@@ -90,6 +95,13 @@ export default function App() {
   const [isPatientSearchOpen, setIsPatientSearchOpen] = useState(false);
   const [isGroupsOpen, setIsGroupsOpen] = useState(false);
   const [isConflictsOpen, setIsConflictsOpen] = useState(false);
+  const [isCapacityOpen, setIsCapacityOpen] = useState(false);
+  const [isRoomMapOpen, setIsRoomMapOpen] = useState(false);
+
+  // Capacidade de atendimento (o que fica fora do cálculo) e Mapa de sala por dia
+  const [capacityIgnore, setCapacityIgnore] = useState<CapacityIgnoreConfig>(DEFAULT_CAPACITY_IGNORE);
+  const [roomMaps, setRoomMaps] = useState<RoomMaps>({});
+  const importInputRef = React.useRef<HTMLInputElement>(null);
 
   // When reports are uploaded via batch or single upload
   const handleWeeklyReportsLoaded = (newReports: Partial<Record<DayOfWeekKey, ParsedReport>>) => {
@@ -121,6 +133,11 @@ export default function App() {
         uploadedDays.forEach((d) => delete next[d]);
         return next;
       });
+      setRoomMaps((prev) => {
+        const next = { ...prev };
+        uploadedDays.forEach((d) => delete next[d]);
+        return next;
+      });
 
       if (!newReports[activeDay]) {
         setActiveDay(uploadedDays[0]);
@@ -139,6 +156,7 @@ export default function App() {
     setCustomMorningTimes([]);
     setCustomMiddayTimes([]);
     setCustomAfternoonTimes([]);
+    setRoomMaps({});
   };
 
   // Days with data indicator
@@ -440,6 +458,89 @@ export default function App() {
     return list;
   }, [isGroupsOpen, allTimeSlots, middayTimes, activeTherapists, getCellContent, slotMinutes, conflictsMap]);
 
+  // Capacidade de atendimento do dia (calculada só com a janela aberta)
+  const hiddenIds = useMemo(() => new Set(dayHiddenRooms[activeDay] || []), [dayHiddenRooms, activeDay]);
+  const capacityResult = useMemo(
+    () =>
+      computeCapacity({
+        therapists: isCapacityOpen ? mergedTherapists : [],
+        hiddenIds,
+        morningTimes,
+        middayTimes,
+        afternoonTimes,
+        getCellContent,
+        slotMinutes,
+        config: capacityIgnore,
+      }),
+    [isCapacityOpen, mergedTherapists, hiddenIds, morningTimes, middayTimes, afternoonTimes, getCellContent, slotMinutes, capacityIgnore]
+  );
+
+  // Salas da unidade informadas no Mapa de sala para o dia
+  const physicalRooms = useMemo(() => {
+    const map = roomMaps[activeDay];
+    if (!map) return null;
+    const used = (shift: 'manha' | 'tarde') =>
+      new Set(Object.keys(map[shift]).map((k) => roomOf(map, k, shift)).filter(Boolean)).size;
+    return { roomsManha: map.roomsManha, roomsTarde: map.roomsTarde, usedManha: used('manha'), usedTarde: used('tarde') };
+  }, [roomMaps, activeDay]);
+
+  const handleChangeRoomMap = (day: DayOfWeekKey, map: RoomMapDay) => {
+    setRoomMaps((prev) => ({ ...prev, [day]: map }));
+  };
+
+  // Exportar / importar a agenda completa (arquivos, edições, salas, configurações e mapas)
+  const handleExportAgenda = () => {
+    downloadAgendaBackup(
+      {
+        weeklyReports,
+        activeDay,
+        dayCellOverrides,
+        dayTherapistOverrides,
+        dayRoomOrders,
+        dayHiddenRooms,
+        customMorningTimes,
+        customMiddayTimes,
+        customAfternoonTimes,
+        showLunchPlaceholder,
+        slotMinutes,
+        capacityIgnore,
+        roomMaps,
+      },
+      unitInfo?.fullName || clinicName
+    );
+  };
+
+  const handleImportAgenda = async (file: File) => {
+    try {
+      const { data, exportedAt } = await readAgendaBackup(file);
+      const when = exportedAt ? new Date(exportedAt).toLocaleString('pt-BR') : '';
+      if (
+        hasAnyData &&
+        !window.confirm(
+          `Importar a agenda${when ? ` exportada em ${when}` : ''}?\n\nA agenda atual, com as edições e configurações, será substituída.`
+        )
+      ) {
+        return;
+      }
+      setWeeklyReports(data.weeklyReports);
+      setActiveDay(data.activeDay);
+      setDayCellOverrides(data.dayCellOverrides);
+      setDayTherapistOverrides(data.dayTherapistOverrides);
+      setDayRoomOrders(data.dayRoomOrders);
+      setDayHiddenRooms(data.dayHiddenRooms);
+      setCustomMorningTimes(data.customMorningTimes);
+      setCustomMiddayTimes(data.customMiddayTimes);
+      setCustomAfternoonTimes(data.customAfternoonTimes);
+      setShowLunchPlaceholder(data.showLunchPlaceholder);
+      setSlotMinutes(data.slotMinutes);
+      setCapacityIgnore(data.capacityIgnore);
+      setRoomMaps(data.roomMaps);
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : 'Não foi possível importar o arquivo.');
+    }
+  };
+
   // Export handlers
   const getExportData = (): ExportTableData => ({
     title: report.title,
@@ -520,6 +621,8 @@ export default function App() {
             onOpenGroups={() => setIsGroupsOpen(true)}
             onOpenConflicts={() => setIsConflictsOpen(true)}
             conflictsCount={dayConflictsList.length}
+            onOpenCapacity={() => setIsCapacityOpen(true)}
+            onOpenRoomMap={() => setIsRoomMapOpen(true)}
           />
         </div>
 
@@ -615,6 +718,48 @@ export default function App() {
         )}
       </main>
 
+      {/* Rodapé: exportar / importar a agenda completa */}
+      <footer className="mx-auto mt-2 max-w-[1600px] px-3 sm:px-6 print:hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-xs">
+          <div className="text-xs text-slate-600">
+            <strong className="text-brand-800">Agenda completa em JSON</strong>
+            <span className="ml-1.5">
+              arquivos lidos, edições, salas, grade, capacidade e mapa de sala: salve para continuar depois ou em outro computador.
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleExportAgenda}
+              disabled={!hasAnyData}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-brand-700 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-40"
+              title="Baixar um arquivo JSON com todas as agendas, mudanças e configurações"
+            >
+              <FileDown className="h-3.5 w-3.5" />
+              Exportar agenda
+            </button>
+            <button
+              onClick={() => importInputRef.current?.click()}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-800 hover:bg-brand-100"
+              title="Abrir um arquivo JSON gerado por Exportar agenda"
+            >
+              <FileUp className="h-3.5 w-3.5" />
+              Importar agenda
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) handleImportAgenda(file);
+              }}
+            />
+          </div>
+        </div>
+      </footer>
+
       {/* Upload Modal */}
       <UploadModal
         isOpen={isUploadOpen}
@@ -657,6 +802,44 @@ export default function App() {
         onSelectDay={setActiveDay}
         daysWithData={daysWithData}
       />
+
+      {/* Capacidade de atendimento */}
+      <CapacityModal
+        isOpen={isCapacityOpen}
+        onClose={() => setIsCapacityOpen(false)}
+        result={capacityResult}
+        therapists={mergedTherapists}
+        hiddenIds={hiddenIds}
+        config={capacityIgnore}
+        onChangeConfig={setCapacityIgnore}
+        slotMinutes={slotMinutes}
+        onChangeSlotMinutes={setSlotMinutes}
+        dayLabel={report.dayOfWeek}
+        date={report.date}
+        activeDay={activeDay}
+        onSelectDay={setActiveDay}
+        daysWithData={daysWithData}
+        physicalRooms={physicalRooms}
+        onOpenRoomMap={() => {
+          setIsCapacityOpen(false);
+          setIsRoomMapOpen(true);
+        }}
+      />
+
+      {/* Mapa de sala (montado ao abrir, começando no dia ativo) */}
+      {isRoomMapOpen && (
+        <RoomMapModal
+          isOpen
+          onClose={() => setIsRoomMapOpen(false)}
+          weeklyReports={weeklyReports}
+          dayTherapistOverrides={dayTherapistOverrides}
+          dayHiddenRooms={dayHiddenRooms}
+          roomMaps={roomMaps}
+          onChangeRoomMap={handleChangeRoomMap}
+          initialDay={hasDayData ? activeDay : DAYS_OF_WEEK.find((d) => weeklyReports[d.key])?.key || activeDay}
+          clinic={unitInfo?.fullName || clinicName}
+        />
+      )}
 
       {/* Room Configuration Modal */}
       <RoomConfigModal

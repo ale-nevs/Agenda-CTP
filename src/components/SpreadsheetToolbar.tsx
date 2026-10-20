@@ -11,6 +11,8 @@ import {
   Loader2,
   Users,
   Zap,
+  Gauge,
+  Map as MapIcon,
 } from 'lucide-react';
 import { DayOfWeekKey, DAYS_OF_WEEK } from '../types';
 
@@ -42,6 +44,8 @@ interface SpreadsheetToolbarProps {
   onOpenGroups: () => void;
   onOpenConflicts: () => void;
   conflictsCount: number;
+  onOpenCapacity: () => void;
+  onOpenRoomMap: () => void;
 }
 
 export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
@@ -70,6 +74,8 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
   onOpenGroups,
   onOpenConflicts,
   conflictsCount,
+  onOpenCapacity,
+  onOpenRoomMap,
 }) => {
   const exportDisabled = !hasDayData || activeTherapistsCount === 0 || exporting !== null;
   const exportBtn =
@@ -117,6 +123,24 @@ export const SpreadsheetToolbar: React.FC<SpreadsheetToolbarProps> = ({
         >
           <Users className="h-4 w-4" />
           Todas duplas/grupos
+        </button>
+        <button
+          onClick={onOpenCapacity}
+          disabled={!hasDayData}
+          className="inline-flex items-center gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800 hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-40"
+          title="Capacidade de atendimento do dia: horários com dupla/grupo, individuais, livres (07h às 18h) e salas vazias"
+        >
+          <Gauge className="h-4 w-4" />
+          Capacidade de atendimento
+        </button>
+        <button
+          onClick={onOpenRoomMap}
+          disabled={!hasAnyData}
+          className="inline-flex items-center gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800 hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-40"
+          title="Mapa de sala: salas da unidade por turno e profissionais em cada sala, com impressão do dia ou da semana"
+        >
+          <MapIcon className="h-4 w-4" />
+          Mapa de sala
         </button>
         <button
           onClick={onOpenConflicts}
